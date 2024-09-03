@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use crate::{Result,  GenCamError};
 
@@ -15,6 +17,7 @@ pub enum PropertyStor {
     Int(PropertyConcrete<i64>),
     Float(PropertyConcrete<f64>),
     Unsigned(PropertyConcrete<u64>),
+    Duration(PropertyConcrete<Duration>),
     Str(String),
     EnumString(PropertyEnum<String>),
     EnumInt(PropertyEnum<i64>),
@@ -28,6 +31,7 @@ pub enum PropertyValue {
     Int(i64),
     Float(f64),
     Unsigned(u64),
+    Duration(Duration),
     Str(String),
     EnumString(String),
     EnumInt(i64),
@@ -41,6 +45,7 @@ impl From<PropertyStor> for PropertyValue {
             PropertyStor::Int(i) => PropertyValue::Int(i.get_value()),
             PropertyStor::Float(f) => PropertyValue::Float(f.get_value()),
             PropertyStor::Unsigned(u) => PropertyValue::Unsigned(u.get_value()),
+            PropertyStor::Duration(u) => PropertyValue::Duration(u.get_value()),
             PropertyStor::Str(s) => PropertyValue::Str(s),
             PropertyStor::EnumString(e) => PropertyValue::EnumString(e.get_value()),
             PropertyStor::EnumInt(e) => PropertyValue::EnumInt(e.get_value()),
@@ -56,6 +61,7 @@ pub enum PropertyType {
     Int,
     Float,
     Unsigned,
+    Duration,
     Str,
     EnumString,
     EnumInt,
@@ -69,6 +75,7 @@ impl From<PropertyStor> for PropertyType {
             PropertyStor::Int(_) => PropertyType::Int,
             PropertyStor::Float(_) => PropertyType::Float,
             PropertyStor::Unsigned(_) => PropertyType::Unsigned,
+            PropertyStor::Duration(_) => PropertyType::Duration,
             PropertyStor::Str(_) => PropertyType::Str,
             PropertyStor::EnumString(_) => PropertyType::EnumString,
             PropertyStor::EnumInt(_) => PropertyType::EnumInt,
@@ -109,7 +116,7 @@ macro_rules! prop_num_for_prop_conc {
                     return Err(GenCamError::ReadOnly);
                 }
                 if value < self.min || value > self.max {
-                    return Err(GenCamError::InvalidValue(format!("Value out of range: Valid range [{}, {}]", self.min, self.max)));
+                    return Err(GenCamError::InvalidValue(format!("Value out of range: Valid range [{:?}, {:?}]", self.min, self.max)));
                 }
                 self.value = value;
                 Ok(value)
@@ -139,6 +146,7 @@ macro_rules! prop_num_for_prop_conc {
 prop_num_for_prop_conc!(i64, PropertyType::Int);
 prop_num_for_prop_conc!(f64, PropertyType::Float);
 prop_num_for_prop_conc!(u64, PropertyType::Unsigned);
+prop_num_for_prop_conc!(Duration, PropertyType::Duration);
 
 impl PropertyFunctions<bool> for PropertyConcrete<bool> {
     fn get_value(&self) -> bool {

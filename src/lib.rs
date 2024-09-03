@@ -169,57 +169,16 @@ pub trait GenCamInfo: Send + Sync {
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
 
-    /// Set the target detector temperature.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_temperature(&self, _temperature: f32) -> Result<f32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
+    /// Get optional capabilities of the camera.
+    fn get_properties(&self) -> Vec<crate::property::Property>;
 
-    /// Get the current detector temperature.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_temperature(&self) -> Option<f32> {
-        None
-    }
-
-    /// Enable/disable cooler.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_cooler(&self, _on: bool) -> Result<()> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Check if cooler is enabled/disabled.
-    ///
-    /// Defaults to `None` if unimplemented/not available.
-    fn get_cooler(&self) -> Option<bool> {
-        None
-    }
-
-    /// Get the current cooler power.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_cooler_power(&self) -> Option<f32> {
-        None
-    }
-
-    /// Set the cooler power.
-    ///
-    /// Raises a `GeneralError` with the message `"Not implemented"` if unimplemented.
-    fn set_cooler_power(&self, _power: f32) -> Result<f32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the detector size (width, height) in pixels.
-    fn get_sensor_size(&self) -> (u16, u16);
-
-    /// Get the detector pixel size (x, y) in microns.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_pixel_size(&self) -> Option<(f32, f32)> {
-        None
-    }
+    /// Get a property by name.
+    /// TODO: Replace name with a type that implements a trait for property names.
+    fn get_property(&self, name: &str) -> Option<&crate::property::PropertyValue>;
+    
+    /// Set a property by name.
+    /// TODO: Replace name with a type that implements a trait for property names.
+    fn set_property(&mut self, name: &str, value: &crate::property::PropertyValue) -> Result<()>;
 }
 
 /// Trait for controlling the camera. This trait is intended to be applied to a
@@ -239,6 +198,36 @@ pub trait GenCam: Send {
         None
     }
 
+    /// Check if camera is ready.
+    fn camera_ready(&self) -> bool;
+
+    /// Get the camera name.
+    fn camera_name(&self) -> &str;
+
+    /// Get optional capabilities of the camera.
+    fn get_properties(&self) -> Vec<crate::property::Property>;
+
+    /// Get a property by name.
+    /// TODO: Replace name with a type that implements a trait for property names.
+    fn get_property(&self, name: &str) -> Option<&crate::property::PropertyValue>;
+    
+    /// Set a property by name.
+    /// TODO: Replace name with a type that implements a trait for property names.
+    fn set_property(&mut self, name: &str, value: &crate::property::PropertyValue) -> Result<()>;
+
+    /// Cancel an ongoing exposure.
+    fn cancel_capture(&self) -> Result<()>;
+
+    /// Get any associated unique identifier for the camera.
+    ///
+    /// Defaults to `None` if unimplemented.
+    fn uuid(&self) -> Option<&str> {
+        None
+    }
+
+    /// Check if the camera is currently capturing an image.
+    fn is_capturing(&self) -> bool;
+
     /// Capture an image.
     /// This is a blocking call.
     ///
@@ -255,110 +244,14 @@ pub trait GenCam: Send {
     /// non-blocking exposure has finished running.
     fn image_ready(&self) -> Result<bool>;
 
-    /// Get the remaining exposure time.
-    fn exposure_remaining(&self) -> Result<Duration>;
-
     /// Get the camera state.
     fn camera_state(&self) -> Result<GenCamState>;
 
-    /// Set the exposure time.
-    ///
-    /// # Arguments
-    /// - `exposure` - The exposure time as a [`Duration`].
-    ///
-    /// # Returns
-    /// The exposure time that was set, or error.
-    fn set_exposure(&mut self, exposure: Duration) -> Result<Duration>;
+    /// Get camera exposure.
+    fn get_exposure(&self) -> Result<Duration>;
 
-    /// Get the currently set exposure time.
-    ///
-    /// # Returns
-    /// - The exposure time as a [`Duration`].
-    fn get_exposure(&self) -> Duration;
-
-    /// Get the current gain (in percentage units).
-    ///
-    /// Defaults to `0.0` if unimplemented.
-    fn get_gain(&self) -> f32 {
-        0.0
-    }
-
-    /// Get the current gain (in raw values).
-    ///
-    /// Defaults to `0` if unimplemented.
-    fn get_gain_raw(&self) -> i64 {
-        0
-    }
-
-    /// Set the gain (in percentage units).
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_gain(&mut self, _gain: f32) -> Result<f32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Set the gain (in raw values).
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_gain_raw(&mut self, _gain: i64) -> Result<i64> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the current pixel offset.
-    ///
-    /// Defaults to `0` if unimplemented.
-    fn get_offset(&self) -> i32 {
-        0
-    }
-
-    /// Set the pixel offset.
-    ///
-    /// Raises a `GeneralError` with the message `"Not implemented"` if unimplemented.
-    fn set_offset(&mut self, _offset: i32) -> Result<i32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the minimum exposure time.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn get_min_exposure(&self) -> Result<Duration> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the maximum exposure time.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn get_max_exposure(&self) -> Result<Duration> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the minimum gain (in raw units).
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn get_min_gain(&self) -> Result<i64> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the maximum gain (in raw units).
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn get_max_gain(&self) -> Result<i64> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Set the shutter to open (always/when exposing).
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_shutter_open(&mut self, _open: bool) -> Result<bool> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the shutter state.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn get_shutter_open(&self) -> Result<bool> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
+    /// Set camera exposure.
+    fn set_exposure(&mut self, exposure: Duration) -> Result<(Duration)>;
 
     /// Set the image region of interest (ROI).
     ///
@@ -373,18 +266,6 @@ pub trait GenCam: Send {
     /// # Returns
     /// The region of interest that was set, or error.
     fn set_roi(&mut self, roi: &GenCamRoi) -> Result<&GenCamRoi>;
-
-    /// Set the pixel format.
-    ///
-    /// # Arguments
-    /// - `format` - The pixel format.
-    fn set_bpp(&mut self, bpp: GenCamPixelBpp) -> Result<GenCamPixelBpp>;
-
-    /// Get the pixel format.
-    ///
-    /// # Returns
-    /// The pixel format.
-    fn get_bpp(&self) -> GenCamPixelBpp;
 
     /// Flip the image along X and/or Y axes.
     ///
@@ -419,74 +300,6 @@ pub trait GenCam: Send {
     /// # Returns
     /// - The region of interest.
     fn get_roi(&self) -> &GenCamRoi;
-
-    /// Get the current operational status of the camera.
-    ///
-    /// Defaults to `"Not implemented"` if unimplemented.
-    fn get_status(&self) -> String {
-        "Not implemented".to_string()
-    }
-
-    /// Check if camera is ready.
-    fn camera_ready(&self) -> bool;
-
-    /// Get the camera name.
-    fn camera_name(&self) -> &str;
-
-    /// Cancel an ongoing exposure.
-    fn cancel_capture(&self) -> Result<()>;
-
-    /// Get any associated unique identifier for the camera.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn uuid(&self) -> Option<&str> {
-        None
-    }
-
-    /// Check if the camera is currently capturing an image.
-    fn is_capturing(&self) -> bool;
-
-    /// Set the target detector temperature.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_temperature(&self, _temperature: f32) -> Result<f32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Get the current detector temperature.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_temperature(&self) -> Option<f32> {
-        None
-    }
-
-    /// Enable/disable cooler.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_cooler(&self, _on: bool) -> Result<()> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Check if cooler is enabled/disabled.
-    ///
-    /// Defaults to `None` if unimplemented/not available.
-    fn get_cooler(&self) -> Option<bool> {
-        None
-    }
-
-    /// Get the current cooler power.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_cooler_power(&self) -> Option<f32> {
-        None
-    }
-
-    /// Set the cooler power.
-    ///
-    /// Raises a `GeneralError` with the message `"Not implemented"` if unimplemented.
-    fn set_cooler_power(&self, _power: f32) -> Result<f32> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
 
     /// Get the detector size (width, height) in pixels.
     fn get_sensor_size(&self) -> (u16, u16);
