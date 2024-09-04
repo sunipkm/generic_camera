@@ -49,12 +49,14 @@ Ideally, the crate implementing the camera interface should
 
 */
 
+use property::GenericProperty;
 pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
+
+pub use crate::property::{Property, PropertyValue, PropertyType, PropertyName};
 
 mod property;
 
@@ -170,15 +172,15 @@ pub trait GenCamInfo: Send + Sync {
     fn is_capturing(&self) -> bool;
 
     /// Get optional capabilities of the camera.
-    fn get_properties(&self) -> Vec<crate::property::Property>;
+    fn get_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn get_property(&self, name: &str) -> Option<&crate::property::PropertyValue>;
+    fn get_property(&self, name: &dyn GenericProperty) -> Option<&PropertyValue>;
     
     /// Set a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn set_property(&mut self, name: &str, value: &crate::property::PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: &dyn GenericProperty, value: &PropertyValue) -> Result<()>;
 }
 
 /// Trait for controlling the camera. This trait is intended to be applied to a
@@ -189,15 +191,6 @@ pub trait GenCam: Send {
     /// Get the camera vendor.
     fn vendor(&self) -> &str;
 
-    /// Get a handle to the internal camera. This is intended to be used for
-    /// development purposes, as (presumably FFI and unsafe) internal calls
-    /// are abstracted away from the user.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn handle(&self) -> Option<&dyn Any> {
-        None
-    }
-
     /// Check if camera is ready.
     fn camera_ready(&self) -> bool;
 
@@ -205,15 +198,15 @@ pub trait GenCam: Send {
     fn camera_name(&self) -> &str;
 
     /// Get optional capabilities of the camera.
-    fn get_properties(&self) -> Vec<crate::property::Property>;
+    fn get_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn get_property(&self, name: &str) -> Option<&crate::property::PropertyValue>;
+    fn get_property(&self, name: &dyn GenericProperty) -> Option<&PropertyValue>;
     
     /// Set a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn set_property(&mut self, name: &str, value: &crate::property::PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: &dyn GenericProperty, value: &PropertyValue) -> Result<()>;
 
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> Result<()>;
@@ -267,6 +260,12 @@ pub trait GenCam: Send {
     /// The region of interest that was set, or error.
     fn set_roi(&mut self, roi: &GenCamRoi) -> Result<&GenCamRoi>;
 
+    /// Get the region of interest.
+    ///
+    /// # Returns
+    /// - The region of interest.
+    fn get_roi(&self) -> &GenCamRoi;
+
     /// Flip the image along X and/or Y axes.
     ///
     /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
@@ -280,26 +279,6 @@ pub trait GenCam: Send {
     fn get_flip(&self) -> (bool, bool) {
         (false, false)
     }
-
-    /// Get the X binning factor.
-    ///
-    /// Defaults to `1` if unimplemented.
-    fn get_bin_x(&self) -> u32 {
-        1
-    }
-
-    /// Get the Y binning factor.
-    ///
-    /// Defaults to `1` if unimplemented.
-    fn get_bin_y(&self) -> u32 {
-        1
-    }
-
-    /// Get the region of interest.
-    ///
-    /// # Returns
-    /// - The region of interest.
-    fn get_roi(&self) -> &GenCamRoi;
 
     /// Get the detector size (width, height) in pixels.
     fn get_sensor_size(&self) -> (u16, u16);
@@ -418,6 +397,9 @@ pub enum GenCamError {
     /// Exposure not started.
     #[error("Exposure not started.")]
     ExposureNotStarted,
+    /// Property not found.
+    #[error("Property not found: {0}")]
+    PropertyNotFound(String),
     /// Read only property.
     #[error("Property is read only")]
     ReadOnly,
