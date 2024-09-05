@@ -3,6 +3,108 @@ use std::time::Duration;
 use crate::{GenCamError, Result};
 use serde::{Deserialize, Serialize};
 
+#[non_exhaustive]
+pub enum DeviceCtrl {
+    ScanType,
+    VendorName,
+    ModelName,
+    FamilyName,
+    MfgInfo,
+    Version,
+    FwVersion,
+    SerialNumber,
+    Id,
+    UserId,
+    TlType,
+    TemperatureSelector,
+    Temperature,
+}
+
+#[non_exhaustive]
+pub enum SensorCtrl {
+    Width,
+    Height,
+    PixelWidth,
+    PixelHeight,
+    Name,
+    ShutterMode,
+    WidthMax,
+    HeightMax,
+    BinningSelector,
+    BinningHorzlMode,
+    BinningVertMode,
+    BinningHorz,
+    BinningVert,
+    DecimationHorzMode,
+    DecimationHorz,
+    DecimationVertMode,
+    DecimationVert,
+    ReverseX,
+    ReverseY,
+    PixelFormat,
+    TestPattern,
+}
+
+#[non_exhaustive]
+pub enum TriggerCtrl {
+    TriggerSel,
+    TriggerMod,
+    TriggerSrc,
+    TriggerAct,
+    TriggerOverlap,
+    TriggerDelay,
+    TriggerDivider,
+    TriggerMultiplier,
+}
+
+#[non_exhaustive]
+pub enum ExposureCtrl {
+    ExposureMode,
+    ExposureTimeMode,
+    ExposureTimeSelector,
+    ExposureTime,
+    ExposureAuto,
+}
+
+#[non_exhaustive]
+pub enum AnalogCtrl {
+    GainSelector,
+    Gain,
+    GainAuto,
+    GainAutoBalance,
+    BlackLevelSel,
+    BlackLevel,
+    BlackLevelAuto,
+    BlackLevelAutoBalance,
+    WhiteClipSel,
+    WhiteClip,
+    BalanceRatioSel,
+    BalanceRatio,
+    BalanceWhiteAuto,
+    Gamma,
+}
+
+#[non_exhaustive]
+pub enum DigitalIoCtrl {
+    LineSel,
+    LineMod,
+    LineInvert,
+    LineStat,
+    LineSrc,
+    UserOutSel,
+    UserOutVal,
+}
+
+#[non_exhaustive]
+pub enum GenCamCtrl {
+    Device(DeviceCtrl),
+    Sensor(SensorCtrl),
+    Trigger(TriggerCtrl),
+    Analog(AnalogCtrl),
+    DigitalIo(DigitalIoCtrl),
+}
+
+
 /// A generic property trait that abstracts the different types of properties
 /// TODO: Derive macro for this trait to reduce boilerplate. Read: [argh](https://github.com/google/argh), [thiserror](https://github.com/dtolnay/thiserror)
 pub trait GenericProperty {
@@ -18,6 +120,8 @@ pub trait GenericProperty {
     fn get_propname(&self) -> PropertyName {
         PropertyName::from_str(self.get_name())
     }
+    /// Get the property type as a [`PropertyType`]
+    fn get_proptype(&self) -> PropertyType;
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash)]
@@ -36,7 +140,7 @@ impl PropertyName {
         match &self.0 {
             // Safety: The name is constructed from a string, so it is guaranteed to be valid utf8
             PrivPropertyName::Stack(name) => std::str::from_utf8(name)
-                .unwrap()
+                .expect("Error unpacking string in PrivPropertyName::Stack")
                 .trim_matches(char::from(0)),
             PrivPropertyName::Heap(name) => name.as_str(),
         }
@@ -110,8 +214,8 @@ impl Property {
             PropertyStor::Duration(prop) => Ok(prop.get_max()?.into()),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotNumber),
             PropertyStor::EnumString(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyStor::EnumInt(prop) => Ok(prop.get_max()?.into()),
-            PropertyStor::EnumUnsigned(prop) => Ok(prop.get_max()?.into()),
+            PropertyStor::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
+            PropertyStor::EnumUnsigned(_) => Err(GenCamError::PropertyIsEnum),
         }
     }
 
@@ -125,8 +229,8 @@ impl Property {
             PropertyStor::Duration(prop) => Ok(prop.get_step()?.into()),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotNumber),
             PropertyStor::EnumString(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyStor::EnumInt(prop) => Ok(prop.get_step()?.into()),
-            PropertyStor::EnumUnsigned(prop) => Ok(prop.get_step()?.into()),
+            PropertyStor::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
+            PropertyStor::EnumUnsigned(_) => Err(GenCamError::PropertyIsEnum),
         }
     }
 
@@ -235,9 +339,32 @@ impl From<String> for PropertyValue {
     }
 }
 
+impl From<&str> for PropertyValue {
+    fn from(val: &str) -> Self {
+        PropertyValue::Str(val.to_owned())
+    }
+}
+
 impl From<bool> for PropertyValue {
     fn from(val: bool) -> Self {
         PropertyValue::Bool(val)
+    }
+}
+
+impl From<&PropertyValue> for PropertyType {
+    fn from(prop: &PropertyValue) -> Self {
+        use PropertyValue::*;
+        match prop {
+            Bool(_) => PropertyType::Bool,
+            Int(_) => PropertyType::Int,
+            Float(_) => PropertyType::Float,
+            Unsigned(_) => PropertyType::Unsigned,
+            Duration(_) => PropertyType::Duration,
+            Str(_) => PropertyType::Str,
+            EnumString(_) => PropertyType::EnumString,
+            EnumInt(_) => PropertyType::EnumInt,
+            EnumUnsigned(_) => PropertyType::EnumUnsigned,
+        }
     }
 }
 
@@ -267,22 +394,22 @@ pub enum PropertyType {
 
 impl From<&PropertyStor> for PropertyType {
     fn from(prop: &PropertyStor) -> Self {
+        use PropertyStor::*;
         match prop {
-            PropertyStor::Bool(_) => PropertyType::Bool,
-            PropertyStor::Int(_) => PropertyType::Int,
-            PropertyStor::Float(_) => PropertyType::Float,
-            PropertyStor::Unsigned(_) => PropertyType::Unsigned,
-            PropertyStor::Duration(_) => PropertyType::Duration,
-            PropertyStor::Str(_) => PropertyType::Str,
-            PropertyStor::EnumString(_) => PropertyType::EnumString,
-            PropertyStor::EnumInt(_) => PropertyType::EnumInt,
-            PropertyStor::EnumUnsigned(_) => PropertyType::EnumUnsigned,
+            Bool(_) => PropertyType::Bool,
+            Int(_) => PropertyType::Int,
+            Float(_) => PropertyType::Float,
+            Unsigned(_) => PropertyType::Unsigned,
+            Duration(_) => PropertyType::Duration,
+            Str(_) => PropertyType::Str,
+            EnumString(_) => PropertyType::EnumString,
+            EnumInt(_) => PropertyType::EnumInt,
+            EnumUnsigned(_) => PropertyType::EnumUnsigned,
         }
     }
 }
 
 pub trait PropertyFunctions<T: Sized> {
-    fn get_type(&self) -> PropertyType;
     fn get_min(&self) -> Result<T>;
     fn get_max(&self) -> Result<T>;
     fn get_step(&self) -> Result<T>;
@@ -328,9 +455,6 @@ macro_rules! prop_num_for_prop_conc {
             fn get_default(&self) -> Result<$t> {
                 Ok(self.default)
             }
-            fn get_type(&self) -> PropertyType {
-                $b
-            }
             fn get_variants(&self) -> Result<Vec<$t>> {
                 Err(GenCamError::PropertyNotEnum)
             }
@@ -356,9 +480,6 @@ impl PropertyFunctions<bool> for PropertyConcrete<bool> {
     fn get_default(&self) -> Result<bool> {
         Ok(self.default)
     }
-    fn get_type(&self) -> PropertyType {
-        PropertyType::Bool
-    }
     fn get_variants(&self) -> Result<Vec<bool>> {
         Err(GenCamError::PropertyNotEnum)
     }
@@ -376,9 +497,6 @@ impl PropertyFunctions<String> for PropertyConcrete<String> {
     }
     fn get_default(&self) -> Result<String> {
         Ok(self.default.clone())
-    }
-    fn get_type(&self) -> PropertyType {
-        PropertyType::Str
     }
     fn get_variants(&self) -> Result<Vec<String>> {
         Err(GenCamError::PropertyNotEnum)
@@ -420,9 +538,6 @@ macro_rules! impl_propfn_for_propenum {
             }
             fn get_default(&self) -> Result<$t> {
                 Ok(self.variants[self.default].clone())
-            }
-            fn get_type(&self) -> PropertyType {
-                <$t>::get_enum()
             }
             fn get_variants(&self) -> Result<Vec<$t>> {
                 Ok(self.variants.clone())

@@ -49,14 +49,14 @@ Ideally, the crate implementing the camera interface should
 
 */
 
-use property::GenericProperty;
+use property::{GenCamCtrl, GenericProperty};
 pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
-pub use crate::property::{Property, PropertyValue, PropertyType, PropertyName};
+pub use crate::property::{Property, PropertyName, PropertyType, PropertyValue};
 
 mod property;
 
@@ -91,7 +91,7 @@ impl Display for GenCamRoi {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 /// Defines the state of the camera.
 pub enum GenCamState {
     /// Camera is idle.
@@ -103,7 +103,7 @@ pub enum GenCamState {
     /// Camera is downloading image.
     Downloading(Option<u32>),
     /// Error occurred.
-    Errored,
+    Errored(GenCamError),
     /// Camera is in an unknown state.
     Unknown,
 }
@@ -161,13 +161,6 @@ pub trait GenCamInfo: Send + Sync {
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> Result<()>;
 
-    /// Get any associated unique identifier for the camera.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn uuid(&self) -> Option<&str> {
-        None
-    }
-
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
 
@@ -176,11 +169,11 @@ pub trait GenCamInfo: Send + Sync {
 
     /// Get a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn get_property(&self, name: &dyn GenericProperty) -> Option<&PropertyValue>;
-    
+    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
+
     /// Set a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn set_property(&mut self, name: &dyn GenericProperty, value: &PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
 }
 
 /// Trait for controlling the camera. This trait is intended to be applied to a
@@ -202,21 +195,14 @@ pub trait GenCam: Send {
 
     /// Get a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn get_property(&self, name: &dyn GenericProperty) -> Option<&PropertyValue>;
-    
+    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
+
     /// Set a property by name.
     /// TODO: Replace name with a type that implements a trait for property names.
-    fn set_property(&mut self, name: &dyn GenericProperty, value: &PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
 
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> Result<()>;
-
-    /// Get any associated unique identifier for the camera.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn uuid(&self) -> Option<&str> {
-        None
-    }
 
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
@@ -244,7 +230,7 @@ pub trait GenCam: Send {
     fn get_exposure(&self) -> Result<Duration>;
 
     /// Set camera exposure.
-    fn set_exposure(&mut self, exposure: Duration) -> Result<(Duration)>;
+    fn set_exposure(&mut self, exposure: Duration) -> Result<Duration>;
 
     /// Set the image region of interest (ROI).
     ///
@@ -331,7 +317,7 @@ impl From<u32> for GenCamPixelBpp {
     }
 }
 
-#[derive(Error, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Error, Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Errors returned by camera operations.
 pub enum GenCamError {
     /// Error message.
@@ -409,6 +395,9 @@ pub enum GenCamError {
     /// Property is not a number.
     #[error("Property is not a number")]
     PropertyNotNumber,
+    /// Property is an enum, hence does not support min/max.
+    #[error("Property is an enum")]
+    PropertyIsEnum,
     /// Auto mode not supported.
     #[error("Auto mode not supported")]
     AutoNotSupported,
