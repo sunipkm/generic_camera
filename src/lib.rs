@@ -1,64 +1,27 @@
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 /*!
+ * # Generic Camera Interface
+ * This crate provides a generic interface for controlling cameras.
+ */
 
-# cameraunit
-
-`cameraunit` provides a well-defined and ergonomic API to write interfaces to capture frames from CCD/CMOS based
-detectors through Rust traits `cameraunit::CameraUnit` and `cameraunit::CameraInfo`. The library additionally
-provides the `cameraunit::ImageData` struct to obtain images with extensive metadata.
-
-You can use `cameraunit` to:
- - Write user-friendly interfaces to C APIs to access different kinds of cameras in a uniform fashion,
- - Acquire images from these cameras in different pixel formats (using the [`image`](https://crates.io/crates/image) crate as a backend),
- - Save these images to `FITS` files (requires the `cfitsio` C library, and uses the [`fitsio`](https://crates.io/crates/fitsio) crate) with extensive metadata,
- - Alternatively, use the internal [`serialimage::DynamicSerialImage`](https://docs.rs/crate/serialimage/latest/) object to obtain `JPEG`, `PNG`, `BMP` etc.
-
-## Usage
-Add this to your `Cargo.toml`:
-```toml
-[dependencies]
-cameraunit = "6.0"
-```
-and this to your source code:
-```no_run
-use cameraunit::{CameraDriver, CameraUnit, CameraInfo, Error, DynamicSerialImage, OptimumExposureBuilder, SerialImageBuffer};
-```
-
-## Example
-Since this library is mostly trait-only, refer to projects (such as [`cameraunit_asi`](https://crates.io/crates/cameraunit_asi)) to see it in action.
-
-## Notes
-The interface provides three traits:
- 1. `CameraDriver`: This trait provides the API to list available cameras, connect to a camera, and connect to the first available camera.
- 2. `CameraUnit`: This trait supports extensive access to the camera, and provides the API for mutating the camera
-    state, such as changing the exposure, region of interest on the detector, etc. The object implementing this trait
-    must not derive from the `Clone` trait, since ideally image capture should happen in a single thread.
- 3. `CameraInfo`: This trait supports limited access to the camera, and provides the API for obtaining housekeeping
-    data such as temperatures, gain etc., while allowing limited mutation of the camera state, such as changing the
-    detector temperature set point, turning cooler on and off, etc.
-
-Ideally, the crate implementing the camera interface should
- 1. Implement the `CameraUnit` and `CameraInfo` for a `struct` that does not allow cloning, and implement a second,
-    smaller structure that allows clone and implement only `CameraInfo` for that struct.
- 2. Provide functions to get the number of available cameras, a form of unique identification for the cameras,
-    and to open a camera using the unique identification. Additionally, a function to open the first available camera
-    may be provided.
- 3. Upon opening a camera successfully, a tuple of two objects - one implementing the `CameraUnit` trait and
-    another implementing the `CameraInfo` trait, should be returned. The second object should be clonable to be
-    handed off to some threads if required to handle housekeeping functions.
-
-*/
-
-use property::{GenCamCtrl, GenericProperty};
+pub use controls::*;
 pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
-pub use crate::property::{Property, PropertyName, PropertyType, PropertyValue};
+pub use crate::property::{Property, PropertyType, PropertyValue};
 
+mod controls;
 mod property;
+#[cfg(feature = "server")]
+mod server;
+#[cfg(feature = "server")]
+#[cfg_attr(docsrs, doc(cfg(feature = "server")))]
+pub use server::*;
 
 /// The version of the `generic_cam` crate.
 pub type Result<T> = std::result::Result<T, GenCamError>;
@@ -122,12 +85,9 @@ pub trait GenCamDriver {
     /// List available devices.
     fn list_devices(&mut self) -> Result<Vec<GenCamDescriptor>>;
     /// Connect to a device.
-    fn connect_device(
-        &mut self,
-        descriptor: &GenCamDescriptor,
-    ) -> Result<(AnyGenCam, AnyGenCamInfo)>;
+    fn connect_device(&mut self, descriptor: &GenCamDescriptor) -> Result<AnyGenCam>;
     /// Connect to the first available device.
-    fn connect_first_device(&mut self) -> Result<(AnyGenCam, AnyGenCamInfo)>;
+    fn connect_first_device(&mut self) -> Result<AnyGenCam>;
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -150,8 +110,7 @@ pub struct GenCamDescriptor {
 /// Trait for obtaining camera information and cancelling any ongoing image capture.
 /// This trait is intended to be exclusively applied to a clonable object that can
 /// be passed to other threads for housekeeping purposes.
-#[must_use]
-pub trait GenCamInfo: Send + Sync {
+pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     /// Check if camera is ready.
     fn camera_ready(&self) -> bool;
 
@@ -165,22 +124,29 @@ pub trait GenCamInfo: Send + Sync {
     fn is_capturing(&self) -> bool;
 
     /// Get optional capabilities of the camera.
-    fn get_properties(&self) -> Vec<Property>;
+    fn list_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
-    /// TODO: Replace name with a type that implements a trait for property names.
     fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
 
     /// Set a property by name.
-    /// TODO: Replace name with a type that implements a trait for property names.
     fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
+
+    /// Check if a property is in auto mode.
+    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
+
+    /// Set a property to auto mode.
+    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
 }
 
 /// Trait for controlling the camera. This trait is intended to be applied to a
 /// non-clonable object that is used to capture images and can not be shared across
 /// threads.
 #[must_use]
-pub trait GenCam: Send {
+pub trait GenCam: Send + std::fmt::Debug {
+    /// Get the [`GenCamInfo`] object, if available.
+    fn info_handle(&self) -> Option<AnyGenCamInfo>;
+
     /// Get the camera vendor.
     fn vendor(&self) -> &str;
 
@@ -191,15 +157,19 @@ pub trait GenCam: Send {
     fn camera_name(&self) -> &str;
 
     /// Get optional capabilities of the camera.
-    fn get_properties(&self) -> Vec<Property>;
+    fn list_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
-    /// TODO: Replace name with a type that implements a trait for property names.
     fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
 
     /// Set a property by name.
-    /// TODO: Replace name with a type that implements a trait for property names.
     fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
+
+    /// Check if a property is in auto mode.
+    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
+
+    /// Set a property to auto mode.
+    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
 
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> Result<()>;
@@ -216,7 +186,7 @@ pub trait GenCam: Send {
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
     fn start_exposure(&self) -> Result<()>;
 
-    /// Download the image captured in [`CameraUnit::start_exposure`].
+    /// Download the image captured in [`GenCam::start_exposure`].
     fn download_image(&self) -> Result<GenericImage>;
 
     /// Get exposure status. This function is useful for checking if a
@@ -251,30 +221,6 @@ pub trait GenCam: Send {
     /// # Returns
     /// - The region of interest.
     fn get_roi(&self) -> &GenCamRoi;
-
-    /// Flip the image along X and/or Y axes.
-    ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn set_flip(&mut self, _x: bool, _y: bool) -> Result<()> {
-        Err(GenCamError::Message("Not implemented".to_string()))
-    }
-
-    /// Check if the image is flipped along X and/or Y axes.
-    ///
-    /// Defaults to `(false, false)` if unimplemented.
-    fn get_flip(&self) -> (bool, bool) {
-        (false, false)
-    }
-
-    /// Get the detector size (width, height) in pixels.
-    fn get_sensor_size(&self) -> (u16, u16);
-
-    /// Get the detector pixel size (x, y) in microns.
-    ///
-    /// Defaults to `None` if unimplemented.
-    fn get_pixel_size(&self) -> Option<(f32, f32)> {
-        None
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -296,14 +242,14 @@ pub enum GenCamPixelBpp {
 }
 
 impl From<u32> for GenCamPixelBpp {
-    /// Convert from `u32` to [`cameraunit::PixelBpp`].
+    /// Convert from `u32` to [`GenCamPixelBpp`].
     ///
     /// # Arguments
     /// - `value` - The value to convert.
     ///   Note: If the value is not one of the known values, `Bpp8` is returned.
     ///
     /// # Returns
-    /// The corresponding [`cameraunit::PixelBpp`] value.
+    /// The corresponding [`GenCamPixelBpp`] value.
     fn from(value: u32) -> Self {
         match value {
             8 => GenCamPixelBpp::Bpp8,
