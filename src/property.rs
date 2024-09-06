@@ -3,32 +3,52 @@ use std::time::Duration;
 use crate::{GenCamError, Result};
 use serde::{Deserialize, Serialize};
 
+/// Describes device-specific control options.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum DeviceCtrl {
+    /// Query line or area scan type, usually [`PropertyType::EnumString`]
     ScanType,
+    /// Query device vendor ([`PropertyType::Str`])
     VendorName,
+    /// Query device model ([`PropertyType::Str`])
     ModelName,
+    /// Query device family ([`PropertyType::Str`])
     FamilyName,
+    /// Query manufacturer information ([`PropertyType::Str`])
     MfgInfo,
+    /// Query version ([`PropertyType::Str`])
     Version,
+    /// Query firmware version ([`PropertyType::Str`])
     FwVersion,
+    /// Query serial number ([`PropertyType::Str`])
     SerialNumber,
+    /// Query unique ID ([`PropertyType::Str`])
     Id,
+    /// Query user-set ID ([`PropertyType::Str`])
     UserId,
+    /// Query transport layer type ([`PropertyType::Str`])
     TlType,
+    /// Select device temperature source ([`PropertyType::EnumString`])
     TemperatureSelector,
+    /// Query selected temperature ([`PropertyType::Float`])
     Temperature,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SensorCtrl {
-    Width,
-    Height,
+    /// Query pixel width ([`PropertyType::Float`])
     PixelWidth,
+    /// Query pixel height ([`PropertyType::Float`])
     PixelHeight,
+    /// Query sensor name ([`PropertyType::Str`])
     Name,
+    /// Query sensor shutter mode ([`PropertyType::EnumStr`])
     ShutterMode,
+    /// Query sensor max width ([`PropertyType::Unsigned`])
     WidthMax,
+    /// Query sensor max height ([`PropertyType::Unsigned`])
     HeightMax,
     BinningSelector,
     BinningHorzlMode,
@@ -45,27 +65,30 @@ pub enum SensorCtrl {
     TestPattern,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum TriggerCtrl {
-    TriggerSel,
-    TriggerMod,
-    TriggerSrc,
-    TriggerAct,
-    TriggerOverlap,
-    TriggerDelay,
-    TriggerDivider,
-    TriggerMultiplier,
+    Sel,
+    Mod,
+    Src,
+    Act,
+    Overlap,
+    Delay,
+    Divider,
+    Multiplier,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum ExposureCtrl {
-    ExposureMode,
-    ExposureTimeMode,
-    ExposureTimeSelector,
+    Mode,
+    TimeMode,
+    TimeSelector,
     ExposureTime,
-    ExposureAuto,
+    Auto,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum AnalogCtrl {
     GainSelector,
@@ -84,6 +107,7 @@ pub enum AnalogCtrl {
     Gamma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum DigitalIoCtrl {
     LineSel,
@@ -95,6 +119,7 @@ pub enum DigitalIoCtrl {
     UserOutVal,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum GenCamCtrl {
     Device(DeviceCtrl),
@@ -198,7 +223,7 @@ impl Property {
             PropertyStor::Unsigned(prop) => Ok(prop.get_min()?.into()),
             PropertyStor::Duration(prop) => Ok(prop.get_min()?.into()),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyStor::EnumString(_) => Err(GenCamError::PropertyNotNumber),
+            PropertyStor::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyStor::EnumInt(prop) => Ok(prop.get_min()?.into()),
             PropertyStor::EnumUnsigned(prop) => Ok(prop.get_min()?.into()),
         }
@@ -213,7 +238,7 @@ impl Property {
             PropertyStor::Unsigned(prop) => Ok(prop.get_max()?.into()),
             PropertyStor::Duration(prop) => Ok(prop.get_max()?.into()),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyStor::EnumString(_) => Err(GenCamError::PropertyNotNumber),
+            PropertyStor::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyStor::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
             PropertyStor::EnumUnsigned(_) => Err(GenCamError::PropertyIsEnum),
         }
@@ -228,7 +253,7 @@ impl Property {
             PropertyStor::Unsigned(prop) => Ok(prop.get_step()?.into()),
             PropertyStor::Duration(prop) => Ok(prop.get_step()?.into()),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyStor::EnumString(_) => Err(GenCamError::PropertyNotNumber),
+            PropertyStor::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyStor::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
             PropertyStor::EnumUnsigned(_) => Err(GenCamError::PropertyIsEnum),
         }
@@ -243,7 +268,7 @@ impl Property {
             PropertyStor::Unsigned(prop) => Ok(prop.get_default()?.into()),
             PropertyStor::Duration(prop) => Ok(prop.get_default()?.into()),
             PropertyStor::Str(prop) => Ok(prop.get_default()?.into()),
-            PropertyStor::EnumString(prop) => Ok(prop.get_default()?.into()),
+            PropertyStor::EnumStr(prop) => Ok(prop.get_default()?.into()),
             PropertyStor::EnumInt(prop) => Ok(prop.get_default()?.into()),
             PropertyStor::EnumUnsigned(prop) => Ok(prop.get_default()?.into()),
         }
@@ -258,7 +283,7 @@ impl Property {
             PropertyStor::Unsigned(_) => Err(GenCamError::PropertyNotEnum),
             PropertyStor::Duration(_) => Err(GenCamError::PropertyNotEnum),
             PropertyStor::Str(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyStor::EnumString(prop) => {
+            PropertyStor::EnumStr(prop) => {
                 Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
             }
             PropertyStor::EnumInt(prop) => {
@@ -280,7 +305,7 @@ pub enum PropertyStor {
     Unsigned(PropertyConcrete<u64>),
     Duration(PropertyConcrete<Duration>),
     Str(PropertyConcrete<String>),
-    EnumString(PropertyEnum<String>),
+    EnumStr(PropertyEnum<String>),
     EnumInt(PropertyEnum<i64>),
     EnumUnsigned(PropertyEnum<u64>),
 }
@@ -302,7 +327,7 @@ pub enum PropertyValue {
     /// A string value
     Str(String),
     /// An enum string value
-    EnumString(String),
+    EnumStr(String),
     /// An enum integer value
     EnumInt(i64),
     /// An enum unsigned integer value
@@ -361,7 +386,7 @@ impl From<&PropertyValue> for PropertyType {
             Unsigned(_) => PropertyType::Unsigned,
             Duration(_) => PropertyType::Duration,
             Str(_) => PropertyType::Str,
-            EnumString(_) => PropertyType::EnumString,
+            EnumStr(_) => PropertyType::EnumStr,
             EnumInt(_) => PropertyType::EnumInt,
             EnumUnsigned(_) => PropertyType::EnumUnsigned,
         }
@@ -385,7 +410,7 @@ pub enum PropertyType {
     /// A string property ([`String`])
     Str,
     /// An enum string property ([`String`])
-    EnumString,
+    EnumStr,
     /// An enum integer property ([`i64`])
     EnumInt,
     /// An enum unsigned integer property ([`u64`])
@@ -402,7 +427,7 @@ impl From<&PropertyStor> for PropertyType {
             Unsigned(_) => PropertyType::Unsigned,
             Duration(_) => PropertyType::Duration,
             Str(_) => PropertyType::Str,
-            EnumString(_) => PropertyType::EnumString,
+            EnumStr(_) => PropertyType::EnumStr,
             EnumInt(_) => PropertyType::EnumInt,
             EnumUnsigned(_) => PropertyType::EnumUnsigned,
         }
@@ -556,7 +581,7 @@ trait EnumType {
 
 impl EnumType for String {
     fn get_enum() -> PropertyType {
-        PropertyType::EnumString
+        PropertyType::EnumStr
     }
 }
 
