@@ -78,7 +78,6 @@ pub type AnyGenCamInfo = Arc<Box<dyn GenCamInfo>>;
 
 /// Trait for camera drivers. Provides functions to
 /// list available devices and connect to a device.
-#[must_use]
 pub trait GenCamDriver {
     /// Get the number of available devices.
     fn available_devices(&self) -> usize;
@@ -107,42 +106,9 @@ pub struct GenCamDescriptor {
     pub description: Option<String>,
 }
 
-/// Trait for obtaining camera information and cancelling any ongoing image capture.
-/// This trait is intended to be exclusively applied to a clonable object that can
-/// be passed to other threads for housekeeping purposes.
-pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
-    /// Check if camera is ready.
-    fn camera_ready(&self) -> bool;
-
-    /// Get the camera name.
-    fn camera_name(&self) -> &str;
-
-    /// Cancel an ongoing exposure.
-    fn cancel_capture(&self) -> Result<()>;
-
-    /// Check if the camera is currently capturing an image.
-    fn is_capturing(&self) -> bool;
-
-    /// Get optional capabilities of the camera.
-    fn list_properties(&self) -> Vec<Property>;
-
-    /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
-
-    /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
-
-    /// Check if a property is in auto mode.
-    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
-
-    /// Set a property to auto mode.
-    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
-}
-
 /// Trait for controlling the camera. This trait is intended to be applied to a
 /// non-clonable object that is used to capture images and can not be shared across
 /// threads.
-#[must_use]
 pub trait GenCam: Send + std::fmt::Debug {
     /// Get the [`GenCamInfo`] object, if available.
     fn info_handle(&self) -> Option<AnyGenCamInfo>;
@@ -221,6 +187,38 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// # Returns
     /// - The region of interest.
     fn get_roi(&self) -> &GenCamRoi;
+}
+
+/// Trait for obtaining camera information and cancelling any ongoing image capture.
+/// This trait is intended to be exclusively applied to a clonable object that can
+/// be passed to other threads for housekeeping purposes.
+pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
+    /// Check if camera is ready.
+    fn camera_ready(&self) -> bool;
+
+    /// Get the camera name.
+    fn camera_name(&self) -> &str;
+
+    /// Cancel an ongoing exposure.
+    fn cancel_capture(&self) -> Result<()>;
+
+    /// Check if the camera is currently capturing an image.
+    fn is_capturing(&self) -> bool;
+
+    /// Get optional capabilities of the camera.
+    fn list_properties(&self) -> Vec<Property>;
+
+    /// Get a property by name.
+    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
+
+    /// Set a property by name.
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
+
+    /// Check if a property is in auto mode.
+    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
+
+    /// Set a property to auto mode.
+    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
