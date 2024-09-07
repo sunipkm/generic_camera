@@ -2,9 +2,9 @@ use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::AnyGenCam;
 #[allow(unused_imports)]
 use crate::GenCam;
-use crate::AnyGenCam;
 use crate::GenCamCtrl;
 use crate::GenCamError;
 use crate::GenCamRoi;

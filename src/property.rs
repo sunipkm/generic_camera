@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{GenCamError, Result};
+use crate::{GenCamError, GenCamPixelBpp, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::controls::GenCamCtrl;
@@ -48,6 +48,7 @@ impl Property {
             PropertyLims::Int(prop) => Ok(prop.get_min()?.into()),
             PropertyLims::Float(prop) => Ok(prop.get_min()?.into()),
             PropertyLims::Unsigned(prop) => Ok(prop.get_min()?.into()),
+            PropertyLims::PixelFmt(prop) => Ok(prop.get_min()?.into()),
             PropertyLims::Duration(prop) => Ok(prop.get_min()?.into()),
             PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyLims::EnumInt(prop) => Ok(prop.get_min()?.into()),
@@ -62,6 +63,7 @@ impl Property {
             PropertyLims::Int(prop) => Ok(prop.get_max()?.into()),
             PropertyLims::Float(prop) => Ok(prop.get_max()?.into()),
             PropertyLims::Unsigned(prop) => Ok(prop.get_max()?.into()),
+            PropertyLims::PixelFmt(prop) => Ok(prop.get_max()?.into()),
             PropertyLims::Duration(prop) => Ok(prop.get_max()?.into()),
             PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyLims::EnumInt(prop) => Ok(prop.get_max()?.into()),
@@ -76,6 +78,7 @@ impl Property {
             PropertyLims::Int(prop) => Ok(prop.get_step()?.into()),
             PropertyLims::Float(prop) => Ok(prop.get_step()?.into()),
             PropertyLims::Unsigned(prop) => Ok(prop.get_step()?.into()),
+            PropertyLims::PixelFmt(_) => Err(GenCamError::PropertyIsEnum),
             PropertyLims::Duration(prop) => Ok(prop.get_step()?.into()),
             PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
             PropertyLims::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
@@ -90,6 +93,7 @@ impl Property {
             PropertyLims::Int(prop) => Ok(prop.get_default()?.into()),
             PropertyLims::Float(prop) => Ok(prop.get_default()?.into()),
             PropertyLims::Unsigned(prop) => Ok(prop.get_default()?.into()),
+            PropertyLims::PixelFmt(prop) => Ok(prop.get_default()?.into()),
             PropertyLims::Duration(prop) => Ok(prop.get_default()?.into()),
             PropertyLims::EnumStr(prop) => Ok(prop.get_default()?.into()),
             PropertyLims::EnumInt(prop) => Ok(prop.get_default()?.into()),
@@ -105,6 +109,9 @@ impl Property {
             PropertyLims::Float(_) => Err(GenCamError::PropertyNotEnum),
             PropertyLims::Unsigned(_) => Err(GenCamError::PropertyNotEnum),
             PropertyLims::Duration(_) => Err(GenCamError::PropertyNotEnum),
+            PropertyLims::PixelFmt(prop) => {
+                Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
+            }
             PropertyLims::EnumStr(prop) => {
                 Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
             }
@@ -126,6 +133,7 @@ pub enum PropertyLims {
     Float(PropertyConcrete<f64>),
     Unsigned(PropertyConcrete<u64>),
     Duration(PropertyConcrete<Duration>),
+    PixelFmt(PropertyEnum<GenCamPixelBpp>),
     EnumStr(PropertyEnum<String>),
     EnumInt(PropertyEnum<i64>),
     EnumUnsigned(PropertyEnum<u64>),
@@ -143,6 +151,8 @@ pub enum PropertyValue {
     Float(f64),
     /// An unsigned integer value
     Unsigned(u64),
+    /// A pixel format value
+    PixelFmt(GenCamPixelBpp),
     /// A duration value
     Duration(Duration),
     /// An enum string value
@@ -191,6 +201,12 @@ impl From<bool> for PropertyValue {
     }
 }
 
+impl From<GenCamPixelBpp> for PropertyValue {
+    fn from(val: GenCamPixelBpp) -> Self {
+        PropertyValue::PixelFmt(val)
+    }
+}
+
 impl From<&PropertyValue> for PropertyType {
     fn from(prop: &PropertyValue) -> Self {
         use PropertyValue::*;
@@ -199,6 +215,7 @@ impl From<&PropertyValue> for PropertyType {
             Int(_) => PropertyType::Int,
             Float(_) => PropertyType::Float,
             Unsigned(_) => PropertyType::Unsigned,
+            PixelFmt(_) => PropertyType::PixelFmt,
             Duration(_) => PropertyType::Duration,
             EnumStr(_) => PropertyType::EnumStr,
         }
@@ -217,6 +234,8 @@ pub enum PropertyType {
     Float,
     /// An unsigned integer property ([`u64`])
     Unsigned,
+    /// A pixel format property ([`GenCamPixelBpp`])
+    PixelFmt,
     /// A duration property ([`Duration`])
     Duration,
     /// An enum string property ([`String`])
@@ -236,6 +255,7 @@ impl From<&PropertyLims> for PropertyType {
             Float(_) => PropertyType::Float,
             Unsigned(_) => PropertyType::Unsigned,
             Duration(_) => PropertyType::Duration,
+            PixelFmt(_) => PropertyType::PixelFmt,
             EnumStr(_) => PropertyType::EnumStr,
             EnumInt(_) => PropertyType::EnumInt,
             EnumUnsigned(_) => PropertyType::EnumUnsigned,
@@ -381,6 +401,7 @@ macro_rules! impl_propfn_for_propenum {
 impl_propfn_for_propenum!(String);
 impl_propfn_for_propenum!(i64);
 impl_propfn_for_propenum!(u64);
+impl_propfn_for_propenum!(GenCamPixelBpp);
 
 // trait EnumType {
 //     fn get_enum() -> PropertyType;

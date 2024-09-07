@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use crate::PropertyType;
+use serde::{Deserialize, Serialize};
 
 /// Describes device-specific control options.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
