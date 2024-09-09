@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
-pub use crate::property::{Property, PropertyType, PropertyValue};
+pub use crate::property::*;
 
 mod controls;
 mod property;

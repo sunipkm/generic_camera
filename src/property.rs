@@ -127,15 +127,25 @@ impl Property {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
+/// A property with limits
 pub enum PropertyLims {
+    /// A boolean property
     Bool(PropertyConcrete<bool>),
+    /// An integer property
     Int(PropertyConcrete<i64>),
+    /// A floating point property
     Float(PropertyConcrete<f64>),
+    /// An unsigned integer property
     Unsigned(PropertyConcrete<u64>),
+    /// A duration property
     Duration(PropertyConcrete<Duration>),
+    /// A pixel format property
     PixelFmt(PropertyEnum<GenCamPixelBpp>),
+    /// An enum string property
     EnumStr(PropertyEnum<String>),
+    /// An enum integer property
     EnumInt(PropertyEnum<i64>),
+    /// An enum unsigned integer property
     EnumUnsigned(PropertyEnum<u64>),
 }
 
@@ -143,6 +153,8 @@ pub enum PropertyLims {
 #[non_exhaustive]
 /// A property value
 pub enum PropertyValue {
+    /// A command
+    Command,
     /// A boolean value
     Bool(bool),
     /// An integer value
@@ -211,6 +223,7 @@ impl From<&PropertyValue> for PropertyType {
     fn from(prop: &PropertyValue) -> Self {
         use PropertyValue::*;
         match prop {
+            Command => PropertyType::Command,
             Bool(_) => PropertyType::Bool,
             Int(_) => PropertyType::Int,
             Float(_) => PropertyType::Float,
@@ -226,6 +239,8 @@ impl From<&PropertyValue> for PropertyType {
 #[non_exhaustive]
 /// The type of a property
 pub enum PropertyType {
+    /// A command property
+    Command,
     /// A boolean property
     Bool,
     /// An integer property ([`i64`])
@@ -263,15 +278,22 @@ impl From<&PropertyLims> for PropertyType {
     }
 }
 
+/// Trait for properties
 pub trait PropertyFunctions<T: Sized> {
+    /// Get the minimum value of the property
     fn get_min(&self) -> Result<T>;
+    /// Get the maximum value of the property
     fn get_max(&self) -> Result<T>;
+    /// Get the step size of the property
     fn get_step(&self) -> Result<T>;
+    /// Get the default value of the property
     fn get_default(&self) -> Result<T>;
+    /// Get the variants of the property
     fn get_variants(&self) -> Result<Vec<T>>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+/// A property with limits
 pub struct PropertyConcrete<T: Sized> {
     min: T,
     max: T,
@@ -281,6 +303,7 @@ pub struct PropertyConcrete<T: Sized> {
 }
 
 impl<T: Sized> PropertyConcrete<T> {
+    /// Create a new property with limits
     pub fn new(min: T, max: T, step: T, rdonly: bool, default: T) -> Self {
         PropertyConcrete {
             min,
@@ -356,6 +379,7 @@ impl PropertyFunctions<String> for PropertyConcrete<String> {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// An enum property
 pub struct PropertyEnum<T: Sized + PartialEq> {
     value: usize, // index of the value in the variants
     variants: Vec<T>,
@@ -364,6 +388,7 @@ pub struct PropertyEnum<T: Sized + PartialEq> {
 }
 
 impl<T: Sized + PartialEq> PropertyEnum<T> {
+    /// Create a new enum property
     pub fn new(value: T, variants: Vec<T>, rdonly: bool, default: T) -> Self {
         let default = variants.iter().position(|x| x == &default).unwrap();
         let value = variants.iter().position(|x| x == &value).unwrap();

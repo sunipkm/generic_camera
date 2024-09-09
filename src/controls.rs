@@ -32,6 +32,18 @@ pub enum DeviceCtrl {
     TemperatureSelector,
     /// Query selected temperature ([`PropertyType::Float`])
     Temperature,
+    /// Reset device ([`PropertyType::Command`])
+    Reset,
+    /// Configure the cooler temperature ([`PropertyType::Float`])
+    CoolerTemp,
+    /// Configure the cooler power ([`PropertyType::Float`])
+    CoolerPower,
+    /// Configure high speed mode ([`PropertyType::Bool`])
+    HighSpeedMode,
+    /// Configure device fan ([`PropertyType::Bool`])
+    FanToggle,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 /// Describes sensor-specific control options.
@@ -76,6 +88,8 @@ pub enum SensorCtrl {
     PixelFormat,
     /// Apply a test pattern to the image ([`PropertyType::EnumStr`])
     TestPattern,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 /// Describes trigger-specific control options.
@@ -96,6 +110,8 @@ pub enum TriggerCtrl {
     Divider,
     /// Specifies a multiplication factor for the incoming trigger pulses ([`PropertyType::Float`])
     Multiplier,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 /// Describes exposure control options.
@@ -110,6 +126,10 @@ pub enum ExposureCtrl {
     Auto,
     /// Select exposure auto target brightness ([`PropertyType::Float`])
     AutoTargetBrightness,
+    /// Select maximum gain for auto exposure ([`PropertyType::Float`])
+    AutoMaxGain,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 /// Describes frame rate control options.
@@ -122,6 +142,8 @@ pub enum FrameTimeCtrl {
     FrameTime,
     /// Select frame time auto mode ([`PropertyType::EnumStr`] or [`PropertyType::Bool`])
     Auto,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -156,6 +178,8 @@ pub enum AnalogCtrl {
     BalanceWhiteAuto,
     /// Configure gamma value ([`PropertyType::Float`])
     Gamma,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -176,6 +200,8 @@ pub enum DigitalIoCtrl {
     UserOutSel,
     /// Configure as user output value ([`PropertyType::Float`] or [`PropertyType::Bool`])
     UserOutVal,
+    /// A custom command
+    Custom([u8; 16]),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
