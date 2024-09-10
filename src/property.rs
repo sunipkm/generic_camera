@@ -10,18 +10,20 @@ use crate::controls::GenCamCtrl;
 pub struct Property {
     name: GenCamCtrl,
     auto: bool,
+    rdonly: bool,
     prop: PropertyLims,
 }
 
 impl Property {
     /// Create a new property
-    pub fn new<T>(name: T, prop: PropertyLims, auto: bool) -> Self
+    pub fn new<T>(name: T, prop: PropertyLims, auto: bool, rdonly: bool) -> Self
     where
         T: Into<GenCamCtrl>,
     {
         Property {
             name: name.into(),
             auto,
+            rdonly,
             prop,
         }
     }
@@ -41,86 +43,202 @@ impl Property {
         self.auto
     }
 
+    /// Validate a property value
+    pub fn validate(&self, value: &PropertyValue) -> Result<()> {
+        // 1. Check if value in enum
+        match self.prop {
+            PropertyLims::EnumStr { ref variants, .. } => if let PropertyValue::EnumStr(ref val) = value {
+                if variants.contains(val) {
+                    return Ok(());
+                } else {
+                    return Err(GenCamError::ValueNotSupported);
+                }
+            } else {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::EnumStr,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::EnumInt { ref variants, .. } => if let PropertyValue::Int(ref val) = value {
+                if variants.contains(val) {
+                    return Ok(());
+                } else {
+                    return Err(GenCamError::ValueNotSupported);
+                }
+            } else {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::EnumInt,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::EnumUnsigned { ref variants, .. } => if let PropertyValue::Unsigned(ref val) = value {
+                if variants.contains(val) {
+                    return Ok(());
+                } else {
+                    return Err(GenCamError::ValueNotSupported);
+                }
+            } else {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::EnumUnsigned,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::Duration {..} => if value.get_type() != PropertyType::Duration {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::Duration,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::Bool { .. } => if value.get_type() != PropertyType::Bool {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::Bool,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::Int { .. } => if value.get_type() != PropertyType::Int {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::Int,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::Float { .. } => if value.get_type() != PropertyType::Float {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::Float,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::Unsigned { .. } => if value.get_type() != PropertyType::Unsigned {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::Unsigned,
+                    value.get_type()
+                )));
+            },
+            PropertyLims::PixelFmt { .. } => if value.get_type() != PropertyType::PixelFmt {
+                return Err(GenCamError::InvalidControlType(format!(
+                    "Expected {:?}, got {:?}",
+                    PropertyType::PixelFmt,
+                    value.get_type()
+                )));
+            },
+        }
+        // 2. Check if value is within limits
+        match self.get_type() {
+            PropertyType::Int
+            | PropertyType::Unsigned
+            | PropertyType::Float
+            | PropertyType::Duration => {
+                if &self.get_min()? <= value && value <= &self.get_max()? {
+                    Ok(())
+                } else {
+                    Err(GenCamError::ValueOutOfRange {
+                        value: value.clone(),
+                        min: self.get_min().unwrap(), // safety: checked above
+                        max: self.get_max().unwrap(), // safety: checked above
+                    })
+                }
+            }
+            PropertyType::Bool => Ok(()),
+            PropertyType::Command | PropertyType::PixelFmt | PropertyType::EnumStr | PropertyType::EnumInt | PropertyType::EnumUnsigned => {
+                Err(GenCamError::PropertyNotNumber)
+            }
+        }
+    }
+
     /// Get the minimum value of the property
     pub fn get_min(&self) -> Result<PropertyValue> {
+        use PropertyLims::*;
         match &self.prop {
-            PropertyLims::Bool(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::Int(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::Float(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::Unsigned(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::PixelFmt(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::Duration(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::EnumInt(prop) => Ok(prop.get_min()?.into()),
-            PropertyLims::EnumUnsigned(prop) => Ok(prop.get_min()?.into()),
+            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Int { min, .. } => Ok((*min).into()),
+            Float { min, .. } => Ok((*min).into()),
+            Unsigned { min, .. } => Ok((*min).into()),
+            Duration { min, .. } => Ok((*min).into()),
+            PixelFmt { variants, .. } => {
+                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+            }
+            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
+            EnumInt { variants, .. } => {
+                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+            }
+            EnumUnsigned { variants, .. } => {
+                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+            }
         }
     }
 
     /// Get the maximum value of the property
     pub fn get_max(&self) -> Result<PropertyValue> {
+        use PropertyLims::*;
         match &self.prop {
-            PropertyLims::Bool(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::Int(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::Float(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::Unsigned(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::PixelFmt(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::Duration(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::EnumInt(prop) => Ok(prop.get_max()?.into()),
-            PropertyLims::EnumUnsigned(prop) => Ok(prop.get_max()?.into()),
+            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Int { max, .. } => Ok((*max).into()),
+            Float { max, .. } => Ok((*max).into()),
+            Unsigned { max, .. } => Ok((*max).into()),
+            Duration { max, .. } => Ok((*max).into()),
+            PixelFmt { variants, .. } => {
+                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+            }
+            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
+            EnumInt { variants, .. } => {
+                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+            }
+            EnumUnsigned { variants, .. } => {
+                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+            }
         }
     }
 
     /// Get the step value of the property
     pub fn get_step(&self) -> Result<PropertyValue> {
+        use PropertyLims::*;
         match &self.prop {
-            PropertyLims::Bool(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::Int(prop) => Ok(prop.get_step()?.into()),
-            PropertyLims::Float(prop) => Ok(prop.get_step()?.into()),
-            PropertyLims::Unsigned(prop) => Ok(prop.get_step()?.into()),
-            PropertyLims::PixelFmt(_) => Err(GenCamError::PropertyIsEnum),
-            PropertyLims::Duration(prop) => Ok(prop.get_step()?.into()),
-            PropertyLims::EnumStr(_) => Err(GenCamError::PropertyNotNumber),
-            PropertyLims::EnumInt(_) => Err(GenCamError::PropertyIsEnum),
-            PropertyLims::EnumUnsigned(_) => Err(GenCamError::PropertyIsEnum),
+            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Int { step, .. } => Ok((*step).into()),
+            Float { step, .. } => Ok((*step).into()),
+            Unsigned { step, .. } => Ok((*step).into()),
+            Duration { step, .. } => Ok((*step).into()),
+            PixelFmt { .. } => Err(GenCamError::PropertyIsEnum),
+            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
+            EnumInt { .. } => Err(GenCamError::PropertyIsEnum),
+            EnumUnsigned { .. } => Err(GenCamError::PropertyIsEnum),
         }
     }
 
     /// Get the default value of the property
     pub fn get_default(&self) -> Result<PropertyValue> {
-        match &self.prop {
-            PropertyLims::Bool(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::Int(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::Float(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::Unsigned(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::PixelFmt(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::Duration(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::EnumStr(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::EnumInt(prop) => Ok(prop.get_default()?.into()),
-            PropertyLims::EnumUnsigned(prop) => Ok(prop.get_default()?.into()),
+        use PropertyLims::*;
+        match self.prop.clone() {
+            Bool { default } => Ok(default.into()),
+            Int { default, .. } => Ok(default.into()),
+            Float { default, .. } => Ok(default.into()),
+            Unsigned { default, .. } => Ok(default.into()),
+            Duration { default, .. } => Ok(default.into()),
+            PixelFmt { default, .. } => Ok(default.into()),
+            EnumStr { default, .. } => Ok(default.into()),
+            EnumInt { default, .. } => Ok(default.into()),
+            EnumUnsigned { default, .. } => Ok(default.into()),
         }
     }
 
     /// Get the variants of the property
     pub fn get_variants(&self) -> Result<Vec<PropertyValue>> {
+        use PropertyLims::*;
         match &self.prop {
-            PropertyLims::Bool(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyLims::Int(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyLims::Float(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyLims::Unsigned(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyLims::Duration(_) => Err(GenCamError::PropertyNotEnum),
-            PropertyLims::PixelFmt(prop) => {
-                Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
+            Bool { .. } | Int { .. } | Float { .. } | Unsigned { .. } | Duration { .. } => {
+                Err(GenCamError::PropertyNotEnum)
             }
-            PropertyLims::EnumStr(prop) => {
-                Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
-            }
-            PropertyLims::EnumInt(prop) => {
-                Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
-            }
-            PropertyLims::EnumUnsigned(prop) => {
-                Ok(prop.get_variants()?.into_iter().map(|x| x.into()).collect())
-            }
+            PixelFmt { variants, .. } => Ok(variants.iter().map(|x| (*x).into()).collect()),
+            EnumStr { variants, .. } => Ok(variants.iter().map(|x| x.clone().into()).collect()),
+            EnumInt { variants, .. } => Ok(variants.iter().map(|x| (*x).into()).collect()),
+            EnumUnsigned { variants, .. } => Ok(variants.iter().map(|x| (*x).into()).collect()),
         }
     }
 }
@@ -130,26 +248,85 @@ impl Property {
 /// A property with limits
 pub enum PropertyLims {
     /// A boolean property
-    Bool(PropertyConcrete<bool>),
+    Bool {
+        /// The default value
+        default: bool,
+    },
     /// An integer property
-    Int(PropertyConcrete<i64>),
+    Int {
+        /// The minimum value
+        min: i64,
+        /// The maximum value
+        max: i64,
+        /// The step size
+        step: i64,
+        /// The default value
+        default: i64,
+    },
     /// A floating point property
-    Float(PropertyConcrete<f64>),
+    Float {
+        /// The minimum value
+        min: f64,
+        /// The maximum value
+        max: f64,
+        /// The step size
+        step: f64,
+        /// The default value
+        default: f64,
+    },
     /// An unsigned integer property
-    Unsigned(PropertyConcrete<u64>),
+    Unsigned {
+        /// The minimum value
+        min: u64,
+        /// The maximum value
+        max: u64,
+        /// The step size
+        step: u64,
+        /// The default value
+        default: u64,
+    },
     /// A duration property
-    Duration(PropertyConcrete<Duration>),
+    Duration {
+        /// The minimum value
+        min: Duration,
+        /// The maximum value
+        max: Duration,
+        /// The step size
+        step: Duration,
+        /// The default value
+        default: Duration,
+    },
     /// A pixel format property
-    PixelFmt(PropertyEnum<GenCamPixelBpp>),
+    PixelFmt {
+        /// The variants of the property
+        variants: Vec<GenCamPixelBpp>,
+        /// The default value
+        default: GenCamPixelBpp,
+    },
     /// An enum string property
-    EnumStr(PropertyEnum<String>),
+    EnumStr {
+        /// The variants of the property
+        variants: Vec<String>,
+        /// The default value
+        default: String,
+    },
     /// An enum integer property
-    EnumInt(PropertyEnum<i64>),
+    EnumInt {
+        /// The variants of the property
+        variants: Vec<i64>,
+        /// The default value
+        default: i64,
+    },
     /// An enum unsigned integer property
-    EnumUnsigned(PropertyEnum<u64>),
+    EnumUnsigned {
+        /// The variants of the property
+        variants: Vec<u64>,
+        /// The default value
+        default: u64,
+    },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, PartialOrd)]
 #[non_exhaustive]
 /// A property value
 pub enum PropertyValue {
@@ -169,6 +346,19 @@ pub enum PropertyValue {
     Duration(Duration),
     /// An enum string value
     EnumStr(String),
+}
+
+impl PropertyValue {
+    /// Get the type of the property value
+    pub fn get_type(&self) -> PropertyType {
+        self.into()
+    }
+}
+
+impl From<()> for PropertyValue {
+    fn from(_: ()) -> Self {
+        PropertyValue::Command
+    }
 }
 
 impl From<i64> for PropertyValue {
@@ -265,168 +455,18 @@ impl From<&PropertyLims> for PropertyType {
     fn from(prop: &PropertyLims) -> Self {
         use PropertyLims::*;
         match prop {
-            Bool(_) => PropertyType::Bool,
-            Int(_) => PropertyType::Int,
-            Float(_) => PropertyType::Float,
-            Unsigned(_) => PropertyType::Unsigned,
-            Duration(_) => PropertyType::Duration,
-            PixelFmt(_) => PropertyType::PixelFmt,
-            EnumStr(_) => PropertyType::EnumStr,
-            EnumInt(_) => PropertyType::EnumInt,
-            EnumUnsigned(_) => PropertyType::EnumUnsigned,
+            Bool { .. } => PropertyType::Bool,
+            Int { .. } => PropertyType::Int,
+            Float { .. } => PropertyType::Float,
+            Unsigned { .. } => PropertyType::Unsigned,
+            Duration { .. } => PropertyType::Duration,
+            PixelFmt { .. } => PropertyType::PixelFmt,
+            EnumStr { .. } => PropertyType::EnumStr,
+            EnumInt { .. } => PropertyType::EnumInt,
+            EnumUnsigned { .. } => PropertyType::EnumUnsigned,
         }
     }
 }
-
-/// Trait for properties
-pub trait PropertyFunctions<T: Sized> {
-    /// Get the minimum value of the property
-    fn get_min(&self) -> Result<T>;
-    /// Get the maximum value of the property
-    fn get_max(&self) -> Result<T>;
-    /// Get the step size of the property
-    fn get_step(&self) -> Result<T>;
-    /// Get the default value of the property
-    fn get_default(&self) -> Result<T>;
-    /// Get the variants of the property
-    fn get_variants(&self) -> Result<Vec<T>>;
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-/// A property with limits
-pub struct PropertyConcrete<T: Sized> {
-    min: T,
-    max: T,
-    step: T,
-    rdonly: bool,
-    default: T,
-}
-
-impl<T: Sized> PropertyConcrete<T> {
-    /// Create a new property with limits
-    pub fn new(min: T, max: T, step: T, rdonly: bool, default: T) -> Self {
-        PropertyConcrete {
-            min,
-            max,
-            step,
-            rdonly,
-            default,
-        }
-    }
-}
-
-macro_rules! prop_num_for_prop_conc {
-    ($t:ty, $b: path) => {
-        impl PropertyFunctions<$t> for PropertyConcrete<$t> {
-            fn get_min(&self) -> Result<$t> {
-                Ok(self.min)
-            }
-            fn get_max(&self) -> Result<$t> {
-                Ok(self.max)
-            }
-            fn get_step(&self) -> Result<$t> {
-                Ok(self.step)
-            }
-            fn get_default(&self) -> Result<$t> {
-                Ok(self.default)
-            }
-            fn get_variants(&self) -> Result<Vec<$t>> {
-                Err(GenCamError::PropertyNotEnum)
-            }
-        }
-    };
-}
-
-prop_num_for_prop_conc!(i64, PropertyType::Int);
-prop_num_for_prop_conc!(f64, PropertyType::Float);
-prop_num_for_prop_conc!(u64, PropertyType::Unsigned);
-prop_num_for_prop_conc!(Duration, PropertyType::Duration);
-
-impl PropertyFunctions<bool> for PropertyConcrete<bool> {
-    fn get_min(&self) -> Result<bool> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_max(&self) -> Result<bool> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_step(&self) -> Result<bool> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_default(&self) -> Result<bool> {
-        Ok(self.default)
-    }
-    fn get_variants(&self) -> Result<Vec<bool>> {
-        Err(GenCamError::PropertyNotEnum)
-    }
-}
-
-impl PropertyFunctions<String> for PropertyConcrete<String> {
-    fn get_min(&self) -> Result<String> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_max(&self) -> Result<String> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_step(&self) -> Result<String> {
-        Err(GenCamError::PropertyNotNumber)
-    }
-    fn get_default(&self) -> Result<String> {
-        Ok(self.default.clone())
-    }
-    fn get_variants(&self) -> Result<Vec<String>> {
-        Err(GenCamError::PropertyNotEnum)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-/// An enum property
-pub struct PropertyEnum<T: Sized + PartialEq> {
-    value: usize, // index of the value in the variants
-    variants: Vec<T>,
-    rdonly: bool,
-    default: usize,
-}
-
-impl<T: Sized + PartialEq> PropertyEnum<T> {
-    /// Create a new enum property
-    pub fn new(value: T, variants: Vec<T>, rdonly: bool, default: T) -> Self {
-        let default = variants.iter().position(|x| x == &default).unwrap();
-        let value = variants.iter().position(|x| x == &value).unwrap();
-        PropertyEnum {
-            value,
-            variants,
-            rdonly,
-            default,
-        }
-    }
-}
-
-macro_rules! impl_propfn_for_propenum {
-    ($t:ty) => {
-        impl PropertyFunctions<$t> for PropertyEnum<$t> {
-            fn get_min(&self) -> Result<$t> {
-                Err(GenCamError::PropertyNotNumber)
-            }
-            fn get_max(&self) -> Result<$t> {
-                Err(GenCamError::PropertyNotNumber)
-            }
-            fn get_step(&self) -> Result<$t> {
-                Err(GenCamError::PropertyNotNumber)
-            }
-            fn get_default(&self) -> Result<$t> {
-                Ok(self.variants[self.default].clone())
-            }
-            fn get_variants(&self) -> Result<Vec<$t>> {
-                Ok(self.variants.clone())
-            }
-        }
-    };
-}
-
-impl_propfn_for_propenum!(String);
-impl_propfn_for_propenum!(i64);
-impl_propfn_for_propenum!(u64);
-impl_propfn_for_propenum!(GenCamPixelBpp);
 
 // trait EnumType {
 //     fn get_enum() -> PropertyType;

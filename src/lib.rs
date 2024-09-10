@@ -221,7 +221,7 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 #[non_exhaustive]
 /// Pixel bit depth.
 pub enum GenCamPixelBpp {
@@ -339,6 +339,19 @@ pub enum GenCamError {
     /// Property is not a number.
     #[error("Property is not a number")]
     PropertyNotNumber,
+    #[error("Value out of range")]
+    /// Value out of range.
+    ValueOutOfRange {
+        /// The minimum value.
+        min: PropertyValue,
+        /// The maximum value.
+        max: PropertyValue,
+        /// The supplied value.
+        value: PropertyValue,
+    },
+    #[error("Value not supported")]
+    /// Value not contained in the enum list.
+    ValueNotSupported,
     /// Property is an enum, hence does not support min/max.
     #[error("Property is an enum")]
     PropertyIsEnum,
