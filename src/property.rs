@@ -1,14 +1,15 @@
 use std::time::Duration;
 
-use crate::{GenCamError, GenCamPixelBpp, Result};
+use crate::GenCamPixelBpp;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::controls::GenCamCtrl;
+/// Result type for property operations
+pub type PropertyResult<T> = Result<T, PropertyError>;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 /// A property
 pub struct Property {
-    name: GenCamCtrl,
     auto: bool,
     rdonly: bool,
     prop: PropertyLims,
@@ -16,21 +17,8 @@ pub struct Property {
 
 impl Property {
     /// Create a new property
-    pub fn new<T>(name: T, prop: PropertyLims, auto: bool, rdonly: bool) -> Self
-    where
-        T: Into<GenCamCtrl>,
-    {
-        Property {
-            name: name.into(),
-            auto,
-            rdonly,
-            prop,
-        }
-    }
-
-    /// Get the name of the property
-    pub fn get_name(&self) -> GenCamCtrl {
-        self.name
+    pub fn new(prop: PropertyLims, auto: bool, rdonly: bool) -> Self {
+        Property { auto, rdonly, prop }
     }
 
     /// Get the type of the property
@@ -44,90 +32,99 @@ impl Property {
     }
 
     /// Validate a property value
-    pub fn validate(&self, value: &PropertyValue) -> Result<()> {
+    pub fn validate(&self, value: &PropertyValue) -> PropertyResult<()> {
         // 1. Check if value in enum
         match self.prop {
-            PropertyLims::EnumStr { ref variants, .. } => if let PropertyValue::EnumStr(ref val) = value {
-                if variants.contains(val) {
-                    return Ok(());
+            PropertyLims::EnumStr { ref variants, .. } => {
+                if let PropertyValue::EnumStr(ref val) = value {
+                    if variants.contains(val) {
+                        return Ok(());
+                    } else {
+                        return Err(PropertyError::ValueNotSupported);
+                    }
                 } else {
-                    return Err(GenCamError::ValueNotSupported);
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::EnumStr,
+                        received: value.get_type(),
+                    });
                 }
-            } else {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::EnumStr,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::EnumInt { ref variants, .. } => if let PropertyValue::Int(ref val) = value {
-                if variants.contains(val) {
-                    return Ok(());
+            }
+            PropertyLims::EnumInt { ref variants, .. } => {
+                if let PropertyValue::Int(ref val) = value {
+                    if variants.contains(val) {
+                        return Ok(());
+                    } else {
+                        return Err(PropertyError::ValueNotSupported);
+                    }
                 } else {
-                    return Err(GenCamError::ValueNotSupported);
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::EnumInt,
+                        received: value.get_type(),
+                    });
                 }
-            } else {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::EnumInt,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::EnumUnsigned { ref variants, .. } => if let PropertyValue::Unsigned(ref val) = value {
-                if variants.contains(val) {
-                    return Ok(());
+            }
+            PropertyLims::EnumUnsigned { ref variants, .. } => {
+                if let PropertyValue::Unsigned(ref val) = value {
+                    if variants.contains(val) {
+                        return Ok(());
+                    } else {
+                        return Err(PropertyError::ValueNotSupported);
+                    }
                 } else {
-                    return Err(GenCamError::ValueNotSupported);
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::EnumUnsigned,
+                        received: value.get_type(),
+                    });
                 }
-            } else {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::EnumUnsigned,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::Duration {..} => if value.get_type() != PropertyType::Duration {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::Duration,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::Bool { .. } => if value.get_type() != PropertyType::Bool {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::Bool,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::Int { .. } => if value.get_type() != PropertyType::Int {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::Int,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::Float { .. } => if value.get_type() != PropertyType::Float {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::Float,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::Unsigned { .. } => if value.get_type() != PropertyType::Unsigned {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::Unsigned,
-                    value.get_type()
-                )));
-            },
-            PropertyLims::PixelFmt { .. } => if value.get_type() != PropertyType::PixelFmt {
-                return Err(GenCamError::InvalidControlType(format!(
-                    "Expected {:?}, got {:?}",
-                    PropertyType::PixelFmt,
-                    value.get_type()
-                )));
-            },
+            }
+            PropertyLims::Duration { .. } => {
+                if value.get_type() != PropertyType::Duration {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::Duration,
+                        received: value.get_type(),
+                    });
+                }
+            }
+            PropertyLims::Bool { .. } => {
+                if value.get_type() != PropertyType::Bool {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::Bool,
+                        received: value.get_type(),
+                    });
+                }
+            }
+            PropertyLims::Int { .. } => {
+                if value.get_type() != PropertyType::Int {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::Int,
+                        received: value.get_type(),
+                    });
+                }
+            }
+            PropertyLims::Float { .. } => {
+                if value.get_type() != PropertyType::Float {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::Float,
+                        received: value.get_type(),
+                    });
+                }
+            }
+            PropertyLims::Unsigned { .. } => {
+                if value.get_type() != PropertyType::Unsigned {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::Unsigned,
+                        received: value.get_type(),
+                    });
+                }
+            }
+            PropertyLims::PixelFmt { .. } => {
+                if value.get_type() != PropertyType::PixelFmt {
+                    return Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::PixelFmt,
+                        received: value.get_type(),
+                    });
+                }
+            }
         }
         // 2. Check if value is within limits
         match self.get_type() {
@@ -138,7 +135,7 @@ impl Property {
                 if &self.get_min()? <= value && value <= &self.get_max()? {
                     Ok(())
                 } else {
-                    Err(GenCamError::ValueOutOfRange {
+                    Err(PropertyError::ValueOutOfRange {
                         value: value.clone(),
                         min: self.get_min().unwrap(), // safety: checked above
                         max: self.get_max().unwrap(), // safety: checked above
@@ -146,74 +143,76 @@ impl Property {
                 }
             }
             PropertyType::Bool => Ok(()),
-            PropertyType::Command | PropertyType::PixelFmt | PropertyType::EnumStr | PropertyType::EnumInt | PropertyType::EnumUnsigned => {
-                Err(GenCamError::PropertyNotNumber)
-            }
+            PropertyType::Command
+            | PropertyType::PixelFmt
+            | PropertyType::EnumStr
+            | PropertyType::EnumInt
+            | PropertyType::EnumUnsigned => Err(PropertyError::NotNumber),
         }
     }
 
     /// Get the minimum value of the property
-    pub fn get_min(&self) -> Result<PropertyValue> {
+    pub fn get_min(&self) -> PropertyResult<PropertyValue> {
         use PropertyLims::*;
         match &self.prop {
-            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Bool { .. } => Err(PropertyError::NotNumber),
             Int { min, .. } => Ok((*min).into()),
             Float { min, .. } => Ok((*min).into()),
             Unsigned { min, .. } => Ok((*min).into()),
             Duration { min, .. } => Ok((*min).into()),
             PixelFmt { variants, .. } => {
-                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().min().ok_or(PropertyError::EmptyEnumList)?).into())
             }
-            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
+            EnumStr { .. } => Err(PropertyError::NotNumber),
             EnumInt { variants, .. } => {
-                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().min().ok_or(PropertyError::EmptyEnumList)?).into())
             }
             EnumUnsigned { variants, .. } => {
-                Ok((*variants.iter().min().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().min().ok_or(PropertyError::EmptyEnumList)?).into())
             }
         }
     }
 
     /// Get the maximum value of the property
-    pub fn get_max(&self) -> Result<PropertyValue> {
+    pub fn get_max(&self) -> PropertyResult<PropertyValue> {
         use PropertyLims::*;
         match &self.prop {
-            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Bool { .. } => Err(PropertyError::NotNumber),
             Int { max, .. } => Ok((*max).into()),
             Float { max, .. } => Ok((*max).into()),
             Unsigned { max, .. } => Ok((*max).into()),
             Duration { max, .. } => Ok((*max).into()),
             PixelFmt { variants, .. } => {
-                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().max().ok_or(PropertyError::EmptyEnumList)?).into())
             }
-            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
+            EnumStr { .. } => Err(PropertyError::NotNumber),
             EnumInt { variants, .. } => {
-                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().max().ok_or(PropertyError::EmptyEnumList)?).into())
             }
             EnumUnsigned { variants, .. } => {
-                Ok((*variants.iter().max().ok_or(GenCamError::InvalidSequence)?).into())
+                Ok((*variants.iter().max().ok_or(PropertyError::EmptyEnumList)?).into())
             }
         }
     }
 
     /// Get the step value of the property
-    pub fn get_step(&self) -> Result<PropertyValue> {
+    pub fn get_step(&self) -> PropertyResult<PropertyValue> {
         use PropertyLims::*;
         match &self.prop {
-            Bool { .. } => Err(GenCamError::PropertyNotNumber),
+            Bool { .. } => Err(PropertyError::NotNumber),
             Int { step, .. } => Ok((*step).into()),
             Float { step, .. } => Ok((*step).into()),
             Unsigned { step, .. } => Ok((*step).into()),
             Duration { step, .. } => Ok((*step).into()),
-            PixelFmt { .. } => Err(GenCamError::PropertyIsEnum),
-            EnumStr { .. } => Err(GenCamError::PropertyNotNumber),
-            EnumInt { .. } => Err(GenCamError::PropertyIsEnum),
-            EnumUnsigned { .. } => Err(GenCamError::PropertyIsEnum),
+            PixelFmt { .. } => Err(PropertyError::IsEnum),
+            EnumStr { .. } => Err(PropertyError::NotNumber),
+            EnumInt { .. } => Err(PropertyError::IsEnum),
+            EnumUnsigned { .. } => Err(PropertyError::IsEnum),
         }
     }
 
     /// Get the default value of the property
-    pub fn get_default(&self) -> Result<PropertyValue> {
+    pub fn get_default(&self) -> PropertyResult<PropertyValue> {
         use PropertyLims::*;
         match self.prop.clone() {
             Bool { default } => Ok(default.into()),
@@ -229,11 +228,11 @@ impl Property {
     }
 
     /// Get the variants of the property
-    pub fn get_variants(&self) -> Result<Vec<PropertyValue>> {
+    pub fn get_variants(&self) -> PropertyResult<Vec<PropertyValue>> {
         use PropertyLims::*;
         match &self.prop {
             Bool { .. } | Int { .. } | Float { .. } | Unsigned { .. } | Duration { .. } => {
-                Err(GenCamError::PropertyNotEnum)
+                Err(PropertyError::NotEnum)
             }
             PixelFmt { variants, .. } => Ok(variants.iter().map(|x| (*x).into()).collect()),
             EnumStr { variants, .. } => Ok(variants.iter().map(|x| x.clone().into()).collect()),
@@ -468,24 +467,49 @@ impl From<&PropertyLims> for PropertyType {
     }
 }
 
-// trait EnumType {
-//     fn get_enum() -> PropertyType;
-// }
-
-// impl EnumType for String {
-//     fn get_enum() -> PropertyType {
-//         PropertyType::EnumStr
-//     }
-// }
-
-// impl EnumType for i64 {
-//     fn get_enum() -> PropertyType {
-//         PropertyType::EnumInt
-//     }
-// }
-
-// impl EnumType for u64 {
-//     fn get_enum() -> PropertyType {
-//         PropertyType::EnumUnsigned
-//     }
-// }
+#[derive(Error, Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Property value error
+pub enum PropertyError {
+    /// Property not found.
+    #[error("Property not found")]
+    NotFound,
+    /// Read only property.
+    #[error("Property is read only")]
+    ReadOnly,
+    /// Property not an enum.
+    #[error("Property is not an enum")]
+    NotEnum,
+    /// Property is not a number.
+    #[error("Property is not a number")]
+    NotNumber,
+    #[error("Value out of range")]
+    /// Value out of range.
+    ValueOutOfRange {
+        /// The minimum value.
+        min: PropertyValue,
+        /// The maximum value.
+        max: PropertyValue,
+        /// The supplied value.
+        value: PropertyValue,
+    },
+    #[error("Value not supported")]
+    /// Value not contained in the enum list.
+    ValueNotSupported,
+    /// Property is an enum, hence does not support min/max.
+    #[error("Property is an enum")]
+    IsEnum,
+    /// Auto mode not supported.
+    #[error("Auto mode not supported")]
+    AutoNotSupported,
+    #[error("Invalid control type: {expected:?} != {received:?}")]
+    /// Invalid control type.
+    InvalidControlType {
+        /// The expected type.
+        expected: PropertyType,
+        /// The received type.
+        received: PropertyType,
+    },
+    #[error("Empty enum list")]
+    /// Empty enum list.
+    EmptyEnumList,
+}

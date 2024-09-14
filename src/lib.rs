@@ -8,6 +8,7 @@
 pub use controls::*;
 pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
@@ -24,7 +25,7 @@ mod server;
 pub use server::*;
 
 /// The version of the `generic_cam` crate.
-pub type Result<T> = std::result::Result<T, GenCamError>;
+pub type GenCamResult<T> = std::result::Result<T, GenCamError>;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash)]
 /// This structure defines a region of interest.
@@ -82,11 +83,11 @@ pub trait GenCamDriver {
     /// Get the number of available devices.
     fn available_devices(&self) -> usize;
     /// List available devices.
-    fn list_devices(&mut self) -> Result<Vec<GenCamDescriptor>>;
+    fn list_devices(&mut self) -> GenCamResult<Vec<GenCamDescriptor>>;
     /// Connect to a device.
-    fn connect_device(&mut self, descriptor: &GenCamDescriptor) -> Result<AnyGenCam>;
+    fn connect_device(&mut self, descriptor: &GenCamDescriptor) -> GenCamResult<AnyGenCam>;
     /// Connect to the first available device.
-    fn connect_first_device(&mut self) -> Result<AnyGenCam>;
+    fn connect_first_device(&mut self) -> GenCamResult<AnyGenCam>;
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -98,12 +99,8 @@ pub struct GenCamDescriptor {
     pub name: String,
     /// The camera vendor.
     pub vendor: String,
-    /// The camera model.
-    pub model: String,
-    /// The camera serial number.
-    pub serial: Option<String>,
-    /// Camera description.
-    pub description: Option<String>,
+    /// Additional info
+    pub info: HashMap<String, PropertyValue>,
 }
 
 /// Trait for controlling the camera. This trait is intended to be applied to a
@@ -123,22 +120,22 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn camera_name(&self) -> &str;
 
     /// Get optional capabilities of the camera.
-    fn list_properties(&self) -> Vec<Property>;
+    fn list_properties(&self) -> &HashMap<GenCamCtrl, Property>;
 
     /// Get a property by name.
     fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 
     /// Check if a property is in auto mode.
-    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
+    fn get_property_auto(&self, name: GenCamCtrl) -> GenCamResult<bool>;
 
     /// Set a property to auto mode.
-    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
+    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> GenCamResult<()>;
 
     /// Cancel an ongoing exposure.
-    fn cancel_capture(&self) -> Result<()>;
+    fn cancel_capture(&self) -> GenCamResult<()>;
 
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
@@ -147,26 +144,26 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// This is a blocking call.
     ///
     /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn capture(&self) -> Result<GenericImage>;
+    fn capture(&self) -> GenCamResult<GenericImage>;
 
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
-    fn start_exposure(&self) -> Result<()>;
+    fn start_exposure(&self) -> GenCamResult<()>;
 
     /// Download the image captured in [`GenCam::start_exposure`].
-    fn download_image(&self) -> Result<GenericImage>;
+    fn download_image(&self) -> GenCamResult<GenericImage>;
 
     /// Get exposure status. This function is useful for checking if a
     /// non-blocking exposure has finished running.
-    fn image_ready(&self) -> Result<bool>;
+    fn image_ready(&self) -> GenCamResult<bool>;
 
     /// Get the camera state.
-    fn camera_state(&self) -> Result<GenCamState>;
+    fn camera_state(&self) -> GenCamResult<GenCamState>;
 
     /// Get camera exposure.
-    fn get_exposure(&self) -> Result<Duration>;
+    fn get_exposure(&self) -> GenCamResult<Duration>;
 
     /// Set camera exposure.
-    fn set_exposure(&mut self, exposure: Duration) -> Result<Duration>;
+    fn set_exposure(&mut self, exposure: Duration) -> GenCamResult<Duration>;
 
     /// Set the image region of interest (ROI).
     ///
@@ -180,7 +177,7 @@ pub trait GenCam: Send + std::fmt::Debug {
     ///
     /// # Returns
     /// The region of interest that was set, or error.
-    fn set_roi(&mut self, roi: &GenCamRoi) -> Result<&GenCamRoi>;
+    fn set_roi(&mut self, roi: &GenCamRoi) -> GenCamResult<&GenCamRoi>;
 
     /// Get the region of interest.
     ///
@@ -200,10 +197,13 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn camera_name(&self) -> &str;
 
     /// Cancel an ongoing exposure.
-    fn cancel_capture(&self) -> Result<()>;
+    fn cancel_capture(&self) -> GenCamResult<()>;
 
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
+
+    /// Get the camera state.
+    fn camera_state(&self) -> GenCamResult<GenCamState>;
 
     /// Get optional capabilities of the camera.
     fn list_properties(&self) -> Vec<Property>;
@@ -212,13 +212,13 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> Result<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 
     /// Check if a property is in auto mode.
-    fn get_property_auto(&self, name: GenCamCtrl) -> Result<bool>;
+    fn get_property_auto(&self, name: GenCamCtrl) -> GenCamResult<bool>;
 
     /// Set a property to auto mode.
-    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> Result<()>;
+    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> GenCamResult<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
@@ -327,35 +327,12 @@ pub enum GenCamError {
     /// Exposure not started.
     #[error("Exposure not started.")]
     ExposureNotStarted,
-    /// Property not found.
-    #[error("Property not found: {0}")]
-    PropertyNotFound(String),
-    /// Read only property.
-    #[error("Property is read only")]
-    ReadOnly,
-    /// Property not an enum.
-    #[error("Property is not an enum")]
-    PropertyNotEnum,
-    /// Property is not a number.
-    #[error("Property is not a number")]
-    PropertyNotNumber,
-    #[error("Value out of range")]
-    /// Value out of range.
-    ValueOutOfRange {
-        /// The minimum value.
-        min: PropertyValue,
-        /// The maximum value.
-        max: PropertyValue,
-        /// The supplied value.
-        value: PropertyValue,
+    /// Property related error.
+    #[error("Property error: {control:?} - {error:?}")]
+    PropertyError {
+        /// The control that caused the error.
+        control: GenCamCtrl,
+        /// The error message.
+        error: PropertyError,
     },
-    #[error("Value not supported")]
-    /// Value not contained in the enum list.
-    ValueNotSupported,
-    /// Property is an enum, hence does not support min/max.
-    #[error("Property is an enum")]
-    PropertyIsEnum,
-    /// Auto mode not supported.
-    #[error("Auto mode not supported")]
-    AutoNotSupported,
 }

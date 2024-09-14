@@ -1,9 +1,12 @@
 #[allow(unused_imports)]
 use crate::PropertyType;
+use documented::{Documented, DocumentedVariants};
 use serde::{Deserialize, Serialize};
 
 /// Describes device-specific control options.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 pub enum DeviceCtrl {
     /// Query line or area scan type, usually [`PropertyType::EnumStr`]
@@ -47,7 +50,9 @@ pub enum DeviceCtrl {
 }
 
 /// Describes sensor-specific control options.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 pub enum SensorCtrl {
     /// Query pixel width ([`PropertyType::Float`])
@@ -64,6 +69,8 @@ pub enum SensorCtrl {
     HeightMax,
     /// Query the binning method ([`PropertyType::EnumStr`])
     BinningSelector,
+    /// Query binning factor on both axes ([`PropertyType::EnumUnsigned`] or [`PropertyType::Unsigned`])
+    BinningBoth,
     /// Query the horizontal binning mode ([`PropertyType::EnumStr`])
     BinningHorzlMode,
     /// Query the vertical binning mode ([`PropertyType::EnumStr`])
@@ -93,7 +100,9 @@ pub enum SensorCtrl {
 }
 
 /// Describes trigger-specific control options.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 pub enum TriggerCtrl {
     /// Select trigger line ([`PropertyType::EnumStr`])
@@ -115,7 +124,9 @@ pub enum TriggerCtrl {
 }
 
 /// Describes exposure control options.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 pub enum ExposureCtrl {
     /// Select exposure mode ([`PropertyType::EnumStr`])
@@ -133,7 +144,9 @@ pub enum ExposureCtrl {
 }
 
 /// Describes frame rate control options.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 pub enum FrameTimeCtrl {
     /// Select frame time mode ([`PropertyType::EnumStr`])
@@ -146,7 +159,9 @@ pub enum FrameTimeCtrl {
     Custom([u8; 16]),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 /// Describes analog control options.
 pub enum AnalogCtrl {
@@ -182,7 +197,9 @@ pub enum AnalogCtrl {
     Custom([u8; 16]),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 /// Describes digital I/O control options.
 pub enum DigitalIoCtrl {
@@ -204,7 +221,9 @@ pub enum DigitalIoCtrl {
     Custom([u8; 16]),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
+)]
 #[non_exhaustive]
 /// Describes the general camera control zones.
 pub enum GenCamCtrl {
@@ -241,3 +260,28 @@ impl_from_ctrl!(ExposureCtrl, Exposure);
 impl_from_ctrl!(FrameTimeCtrl, FrameTime);
 impl_from_ctrl!(AnalogCtrl, Analog);
 impl_from_ctrl!(DigitalIoCtrl, DigitalIo);
+
+/// Trait for controls that have a tooltip.
+pub trait ToolTip {
+    /// The tooltip for this control.
+    fn tooltip(&self) -> &'static str;
+}
+
+macro_rules! impl_tooltip {
+    ($ctrl:ident) => {
+        impl ToolTip for $ctrl {
+            fn tooltip(&self) -> &'static str {
+                self.get_variant_docs().unwrap()
+            }
+        }
+    };
+}
+
+impl_tooltip!(DeviceCtrl);
+impl_tooltip!(SensorCtrl);
+impl_tooltip!(TriggerCtrl);
+impl_tooltip!(ExposureCtrl);
+impl_tooltip!(FrameTimeCtrl);
+impl_tooltip!(AnalogCtrl);
+impl_tooltip!(DigitalIoCtrl);
+impl_tooltip!(GenCamCtrl);

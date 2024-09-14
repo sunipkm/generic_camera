@@ -10,17 +10,18 @@ use crate::GenCamError;
 use crate::GenCamRoi;
 use crate::GenCamState;
 use crate::Property;
+use crate::PropertyError;
 use crate::PropertyValue;
-use crate::Result;
+use crate::GenCamResult;
 use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 
 /// The result of a generic camera server call.
-pub type GenCamOutput<'a> = Result<GenCamOk<'a>>;
+pub type GenSrvOutput<'a> = GenCamResult<GenSrvOk<'a>>;
 
 /// The Ok variant of a generic camera server call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GenCamOk<'a> {
+pub enum GenSrvOk<'a> {
     /// No return value.
     Unit,
     /// A single [`PropertyValue`].
@@ -33,51 +34,51 @@ pub enum GenCamOk<'a> {
     /// The current state of the camera.
     State(GenCamState),
     /// A list of properties available on the camera.
-    PropertyList(Vec<Property>),
+    PropertyList(HashMap<GenCamCtrl, Property>),
 }
 
-impl<'a> From<()> for GenCamOk<'a> {
+impl<'a> From<()> for GenSrvOk<'a> {
     fn from(_: ()) -> Self {
-        GenCamOk::Unit
+        GenSrvOk::Unit
     }
 }
 
-impl<'a> From<PropertyValue> for GenCamOk<'a> {
+impl<'a> From<PropertyValue> for GenSrvOk<'a> {
     fn from(value: PropertyValue) -> Self {
-        GenCamOk::Property(value)
+        GenSrvOk::Property(value)
     }
 }
 
-impl<'a> From<GenericImage<'a>> for GenCamOk<'a> {
+impl<'a> From<GenericImage<'a>> for GenSrvOk<'a> {
     fn from(image: GenericImage<'a>) -> Self {
-        GenCamOk::Image(image)
+        GenSrvOk::Image(image)
     }
 }
 
-impl<'a> From<GenCamRoi> for GenCamOk<'a> {
+impl<'a> From<GenCamRoi> for GenSrvOk<'a> {
     fn from(roi: GenCamRoi) -> Self {
-        GenCamOk::Roi(roi)
+        GenSrvOk::Roi(roi)
     }
 }
 
-impl<'a> From<GenCamState> for GenCamOk<'a> {
+impl<'a> From<GenCamState> for GenSrvOk<'a> {
     fn from(state: GenCamState) -> Self {
-        GenCamOk::State(state)
+        GenSrvOk::State(state)
     }
 }
 
-impl<'a> From<Vec<Property>> for GenCamOk<'a> {
-    fn from(properties: Vec<Property>) -> Self {
-        GenCamOk::PropertyList(properties)
+impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvOk<'a> {
+    fn from(properties: HashMap<GenCamCtrl, Property>) -> Self {
+        GenSrvOk::PropertyList(properties)
     }
 }
 
 /// The result of a generic camera server call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GenCamResult<'a> {
+pub enum GenSrvResult<'a> {
     #[serde(borrow)]
     /// A successful result.
-    Ok(GenCamOk<'a>),
+    Ok(GenSrvOk<'a>),
     /// An error occurred.
     Err(GenCamError),
 }
@@ -160,128 +161,131 @@ impl GenCamServer {
     }
 
     /// Execute a client call on a camera by its ID.
-    pub fn execute_fn(&mut self, id: i32, sig: ClientCall) -> GenCamResult {
+    pub fn execute_fn(&mut self, id: i32, sig: ClientCall) -> GenSrvResult {
         let Some(camera) = self.get_camera_mut(id) else {
-            return GenCamResult::Err(GenCamError::InvalidId(id));
+            return GenSrvResult::Err(GenCamError::InvalidId(id));
         };
         use ClientCall::*;
         match sig {
             Vendor => {
                 let vendor = camera.vendor();
-                GenCamResult::Ok(GenCamOk::Property(PropertyValue::EnumStr(
+                GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::EnumStr(
                     vendor.to_string(),
                 )))
             }
             CameraReady => {
                 let ready = camera.camera_ready();
-                GenCamResult::Ok(GenCamOk::Property(PropertyValue::Bool(ready)))
+                GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Bool(ready)))
             }
             CameraName => {
                 let name = camera.camera_name();
-                GenCamResult::Ok(GenCamOk::Property(PropertyValue::EnumStr(name.to_string())))
+                GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::EnumStr(name.to_string())))
             }
             ListProperties => {
                 let properties = camera.list_properties();
-                GenCamResult::Ok(GenCamOk::PropertyList(properties))
+                GenSrvResult::Ok(GenSrvOk::PropertyList(properties.clone()))
             }
             GetProperty(ctrl) => {
                 let prop = camera.get_property(ctrl);
                 match prop {
-                    Some(p) => GenCamResult::Ok(GenCamOk::Property(p.clone())),
-                    None => GenCamResult::Err(GenCamError::PropertyNotFound(format!("{:?}", ctrl))),
+                    Some(p) => GenSrvResult::Ok(GenSrvOk::Property(p.clone())),
+                    None => GenSrvResult::Err(GenCamError::PropertyError {
+                        control: ctrl,
+                        error: PropertyError::NotFound,
+                    }),
                 }
             }
             SetProperty(ctrl, value) => {
                 let result = camera.set_property(ctrl, &value);
                 match result {
-                    Ok(_) => GenCamResult::Ok(GenCamOk::Unit),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             CheckAuto(ctrl) => {
                 let auto = camera.get_property_auto(ctrl);
                 match auto {
-                    Ok(b) => GenCamResult::Ok(GenCamOk::Property(PropertyValue::Bool(b))),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(b) => GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Bool(b))),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             SetAuto(ctrl, b) => {
                 let result = camera.set_property_auto(ctrl, b);
                 match result {
-                    Ok(_) => GenCamResult::Ok(GenCamOk::Unit),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             CancelCapture => {
                 let result = camera.cancel_capture();
                 match result {
-                    Ok(_) => GenCamResult::Ok(GenCamOk::Unit),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             IsCapturing => {
                 let capturing = camera.is_capturing();
-                GenCamResult::Ok(GenCamOk::Property(PropertyValue::Bool(capturing)))
+                GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Bool(capturing)))
             }
             Capture => {
                 let result = camera.capture();
                 match result {
-                    Ok(image) => GenCamResult::Ok(GenCamOk::Image(image)),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(image) => GenSrvResult::Ok(GenSrvOk::Image(image)),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             StartExposure => {
                 let result = camera.start_exposure();
                 match result {
-                    Ok(_) => GenCamResult::Ok(GenCamOk::Unit),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             DownloadImage => {
                 let result = camera.download_image();
                 match result {
-                    Ok(image) => GenCamResult::Ok(GenCamOk::Image(image)),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(image) => GenSrvResult::Ok(GenSrvOk::Image(image)),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             ImageReady => {
                 let ready = camera.image_ready();
                 match ready {
-                    Ok(b) => GenCamResult::Ok(GenCamOk::Property(PropertyValue::Bool(b))),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(b) => GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Bool(b))),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             CameraState => {
                 let state = camera.camera_state();
                 match state {
-                    Ok(s) => GenCamResult::Ok(GenCamOk::State(s)),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(s) => GenSrvResult::Ok(GenSrvOk::State(s)),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             GetExposure => {
                 let exposure = camera.get_exposure();
                 match exposure {
-                    Ok(e) => GenCamResult::Ok(GenCamOk::Property(PropertyValue::Duration(e))),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(e) => GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Duration(e))),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             SetExposure(e) => {
                 let result = camera.set_exposure(e);
                 match result {
-                    Ok(e) => GenCamResult::Ok(GenCamOk::Property(PropertyValue::Duration(e))),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(e) => GenSrvResult::Ok(GenSrvOk::Property(PropertyValue::Duration(e))),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             SetRoi(roi) => {
                 let result = camera.set_roi(&roi);
                 match result {
-                    Ok(r) => GenCamResult::Ok(GenCamOk::Roi(*r)),
-                    Err(e) => GenCamResult::Err(e),
+                    Ok(r) => GenSrvResult::Ok(GenSrvOk::Roi(*r)),
+                    Err(e) => GenSrvResult::Err(e),
                 }
             }
             GetRoi => {
                 let roi = camera.get_roi();
-                GenCamResult::Ok(GenCamOk::Roi(*roi))
+                GenSrvResult::Ok(GenSrvOk::Roi(*roi))
             }
         }
     }
