@@ -419,6 +419,86 @@ impl From<GenCamPixelBpp> for PropertyValue {
     }
 }
 
+impl TryFrom<PropertyValue> for () {
+    type Error = PropertyError;
+
+    fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
+        match value {
+            PropertyValue::Command => Ok(()),
+            _ => Err(PropertyError::InvalidControlType {
+                expected: PropertyType::Command,
+                received: value.get_type(),
+            }),
+        }
+    }
+}
+
+impl TryFrom<&PropertyValue> for () {
+    type Error = PropertyError;
+
+    fn try_from(value: &PropertyValue) -> Result<Self, Self::Error> {
+        match value {
+            PropertyValue::Command => Ok(()),
+            _ => Err(PropertyError::InvalidControlType {
+                expected: PropertyType::Command,
+                received: value.get_type(),
+            }),
+        }
+    }
+}
+
+macro_rules! tryfrom_impl_propval {
+    ($type:ty, $variant:ident) => {
+        impl TryFrom<PropertyValue> for $type {
+            type Error = PropertyError;
+
+            fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
+                match value {
+                    PropertyValue::$variant(val) => Ok(val),
+                    _ => Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::$variant,
+                        received: value.get_type(),
+                    }),
+                }
+            }
+        }
+    };
+}
+
+tryfrom_impl_propval!(bool, Bool);
+tryfrom_impl_propval!(i64, Int);
+tryfrom_impl_propval!(f64, Float);
+tryfrom_impl_propval!(u64, Unsigned);
+tryfrom_impl_propval!(Duration, Duration);
+tryfrom_impl_propval!(String, EnumStr);
+tryfrom_impl_propval!(GenCamPixelBpp, PixelFmt);
+
+macro_rules! tryfrom_impl_propvalref {
+    ($type:ty, $variant:ident) => {
+        impl TryFrom<&PropertyValue> for $type {
+            type Error = PropertyError;
+
+            fn try_from(value: &PropertyValue) -> Result<Self, Self::Error> {
+                match value {
+                    PropertyValue::$variant(val) => Ok(val.clone()),
+                    _ => Err(PropertyError::InvalidControlType {
+                        expected: PropertyType::$variant,
+                        received: value.get_type(),
+                    }),
+                }
+            }
+        }
+    };
+}
+
+tryfrom_impl_propvalref!(bool, Bool);
+tryfrom_impl_propvalref!(i64, Int);
+tryfrom_impl_propvalref!(f64, Float);
+tryfrom_impl_propvalref!(u64, Unsigned);
+tryfrom_impl_propvalref!(Duration, Duration);
+tryfrom_impl_propvalref!(String, EnumStr);
+tryfrom_impl_propvalref!(GenCamPixelBpp, PixelFmt);
+
 impl From<&PropertyValue> for PropertyType {
     fn from(prop: &PropertyValue) -> Self {
         use PropertyValue::*;

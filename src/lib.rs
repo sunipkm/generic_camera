@@ -127,16 +127,10 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn list_properties(&self) -> &HashMap<GenCamCtrl, Property>;
 
     /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
+    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(&PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
-
-    /// Check if a property is in auto mode.
-    fn get_property_auto(&self, name: GenCamCtrl) -> GenCamResult<bool>;
-
-    /// Set a property to auto mode.
-    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> GenCamResult<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue, auto: bool) -> GenCamResult<()>;
 
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> GenCamResult<()>;
@@ -213,16 +207,10 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn list_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> Option<&PropertyValue>;
+    fn get_property(&self, name: GenCamCtrl) -> Option<(&PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
-
-    /// Check if a property is in auto mode.
-    fn get_property_auto(&self, name: GenCamCtrl) -> GenCamResult<bool>;
-
-    /// Set a property to auto mode.
-    fn set_property_auto(&mut self, name: GenCamCtrl, auto: bool) -> GenCamResult<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue, auto: bool) -> GenCamResult<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
