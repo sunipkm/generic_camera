@@ -13,12 +13,23 @@ pub struct Property {
     auto: bool,
     rdonly: bool,
     prop: PropertyLims,
+    doc: Option<String>,
 }
 
 impl Property {
     /// Create a new property
-    pub fn new(prop: PropertyLims, auto: bool, rdonly: bool) -> Self {
-        Property { auto, rdonly, prop }
+    pub fn new(prop: PropertyLims, auto_supported: bool, rdonly: bool) -> Self {
+        Property { auto: auto_supported, rdonly, prop, doc: None }
+    }
+
+    /// Set an optional documentation string
+    pub fn set_doc<T: Into<String>>(&mut self, doc: T) {
+        self.doc = Some(doc.into());
+    }
+
+    /// Get the documentation string
+    pub fn get_doc(&self) -> Option<&str> {
+        self.doc.as_deref()
     }
 
     /// Get the type of the property

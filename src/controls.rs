@@ -3,6 +3,49 @@ use crate::PropertyType;
 use documented::{Documented, DocumentedVariants};
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq)]
+/// A custom name for a control.
+///
+/// This is a 32-byte array that can be used to store a custom name for a control.
+/// 
+/// # Note
+/// The name is trimmed to 32 bytes, so it is possible that the name is truncated.
+///
+/// # Example
+/// ```
+/// use generic_camera::CustomName;
+///
+/// let name: CustomName = "UUID".into();
+/// assert_eq!(name.as_str(), "UUID");
+///
+/// let name: CustomName = "My Custom Very Long Name".into();
+/// assert_eq!(name.as_str(), "My Custom Very L");
+/// ```
+pub struct CustomName([u8; 16]);
+
+impl CustomName {
+    /// Create a new custom name.
+    fn new(name: &str) -> Self {
+        let mut bytes = [0; 16];
+        let len = name.len().min(16);
+        bytes[..len].copy_from_slice(&name.as_bytes()[..len]);
+        Self(bytes)
+    }
+
+    /// Get the custom name as a string.
+    pub fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.0)
+            .unwrap() // This is safe because the array is always valid UTF-8
+            .trim_end_matches(char::from(0))
+    }
+}
+
+impl<'a, T: Into<&'a str>> From<T> for CustomName {
+    fn from(name: T) -> Self {
+        Self::new(name.into())
+    }
+}
+
 /// Describes device-specific control options.
 #[derive(
     Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
@@ -46,7 +89,7 @@ pub enum DeviceCtrl {
     /// Configure device fan ([`PropertyType::Bool`])
     FanToggle,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 /// Describes sensor-specific control options.
@@ -96,7 +139,7 @@ pub enum SensorCtrl {
     /// Apply a test pattern to the image ([`PropertyType::EnumStr`])
     TestPattern,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 /// Describes trigger-specific control options.
@@ -120,7 +163,7 @@ pub enum TriggerCtrl {
     /// Specifies a multiplication factor for the incoming trigger pulses ([`PropertyType::Float`])
     Multiplier,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 /// Describes exposure control options.
@@ -140,7 +183,7 @@ pub enum ExposureCtrl {
     /// Select maximum gain for auto exposure ([`PropertyType::Float`])
     AutoMaxGain,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 /// Describes frame rate control options.
@@ -156,7 +199,7 @@ pub enum FrameTimeCtrl {
     /// Select frame time auto mode ([`PropertyType::EnumStr`] or [`PropertyType::Bool`])
     Auto,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 #[derive(
@@ -194,7 +237,7 @@ pub enum AnalogCtrl {
     /// Configure gamma value ([`PropertyType::Float`])
     Gamma,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 #[derive(
@@ -218,7 +261,7 @@ pub enum DigitalIoCtrl {
     /// Configure as user output value ([`PropertyType::Float`] or [`PropertyType::Bool`])
     UserOutVal,
     /// A custom command
-    Custom([u8; 16]),
+    Custom(CustomName),
 }
 
 #[derive(

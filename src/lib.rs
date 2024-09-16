@@ -61,10 +61,14 @@ pub enum GenCamState {
     /// Camera is idle.
     Idle,
     /// Camera is exposing.
+    /// 
+    /// Contains the elapsed exposure time, if available.
     Exposing(Option<Duration>),
     /// Exposure finished.
     ExposureFinished,
     /// Camera is downloading image.
+    /// 
+    /// Contains the percentage of the image downloaded, if available.
     Downloading(Option<u32>),
     /// Error occurred.
     Errored(GenCamError),
@@ -147,10 +151,10 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn capture(&self) -> GenCamResult<GenericImage>;
 
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
-    fn start_exposure(&self) -> GenCamResult<()>;
+    fn start_exposure(&mut self) -> GenCamResult<()>;
 
     /// Download the image captured in [`GenCam::start_exposure`].
-    fn download_image(&self) -> GenCamResult<GenericImage>;
+    fn download_image(&mut self) -> GenCamResult<GenericImage>;
 
     /// Get exposure status. This function is useful for checking if a
     /// non-blocking exposure has finished running.
@@ -267,6 +271,9 @@ pub enum GenCamError {
     /// Error message.
     #[error("Error: {0}")]
     Message(String),
+    /// Access violation.
+    #[error("Access violation")]
+    AccessViolation,
     /// Invalid index.
     #[error("Invalid index: {0}")]
     InvalidIndex(i32),
