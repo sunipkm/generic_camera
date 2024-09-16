@@ -7,12 +7,11 @@ use crate::AnyGenCam;
 use crate::GenCam;
 use crate::GenCamCtrl;
 use crate::GenCamError;
+use crate::GenCamResult;
 use crate::GenCamRoi;
 use crate::GenCamState;
 use crate::Property;
-use crate::PropertyError;
 use crate::PropertyValue;
-use crate::GenCamResult;
 use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +25,9 @@ pub enum GenSrvOk<'a> {
     Unit,
     /// A single [`PropertyValue`].
     Property {
+        /// The value of the property.
         value: PropertyValue,
+        /// The auto setting of the property, if applicable.
         auto: Option<bool>,
     },
     #[serde(borrow)]
@@ -49,7 +50,7 @@ impl<'a> From<()> for GenSrvOk<'a> {
 impl<'a> From<(PropertyValue, bool)> for GenSrvOk<'a> {
     fn from(value: (PropertyValue, bool)) -> Self {
         let (value, auto) = value;
-        GenSrvOk::Property{
+        GenSrvOk::Property {
             value,
             auto: Some(auto),
         }
@@ -59,7 +60,7 @@ impl<'a> From<(PropertyValue, bool)> for GenSrvOk<'a> {
 impl<'a> From<(&PropertyValue, bool)> for GenSrvOk<'a> {
     fn from(value: (&PropertyValue, bool)) -> Self {
         let (value, auto) = value;
-        GenSrvOk::Property{
+        GenSrvOk::Property {
             value: value.clone(),
             auto: Some(auto),
         }
@@ -68,10 +69,7 @@ impl<'a> From<(&PropertyValue, bool)> for GenSrvOk<'a> {
 
 impl<'a> From<PropertyValue> for GenSrvOk<'a> {
     fn from(value: PropertyValue) -> Self {
-        GenSrvOk::Property{
-            value,
-            auto: None,
-        }
+        GenSrvOk::Property { value, auto: None }
     }
 }
 
@@ -191,9 +189,7 @@ impl GenCamServer {
         match sig {
             Vendor => {
                 let vendor = camera.vendor();
-                GenSrvResult::Ok(PropertyValue::EnumStr(
-                    vendor.to_string(),
-                ).into())
+                GenSrvResult::Ok(PropertyValue::EnumStr(vendor.to_string()).into())
             }
             CameraReady => {
                 let ready = camera.camera_ready();

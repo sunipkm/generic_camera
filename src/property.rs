@@ -19,7 +19,12 @@ pub struct Property {
 impl Property {
     /// Create a new property
     pub fn new(prop: PropertyLims, auto_supported: bool, rdonly: bool) -> Self {
-        Property { auto: auto_supported, rdonly, prop, doc: None }
+        Property {
+            auto: auto_supported,
+            rdonly,
+            prop,
+            doc: None,
+        }
     }
 
     /// Set an optional documentation string

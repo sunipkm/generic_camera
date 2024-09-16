@@ -61,13 +61,13 @@ pub enum GenCamState {
     /// Camera is idle.
     Idle,
     /// Camera is exposing.
-    /// 
+    ///
     /// Contains the elapsed exposure time, if available.
     Exposing(Option<Duration>),
     /// Exposure finished.
     ExposureFinished,
     /// Camera is downloading image.
-    /// 
+    ///
     /// Contains the percentage of the image downloaded, if available.
     Downloading(Option<u32>),
     /// Error occurred.
@@ -130,7 +130,12 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(&PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue, auto: bool) -> GenCamResult<()>;
+    fn set_property(
+        &mut self,
+        name: GenCamCtrl,
+        value: &PropertyValue,
+        auto: bool,
+    ) -> GenCamResult<()>;
 
     /// Cancel an ongoing exposure.
     fn cancel_capture(&self) -> GenCamResult<()>;
@@ -210,7 +215,12 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn get_property(&self, name: GenCamCtrl) -> Option<(&PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue, auto: bool) -> GenCamResult<()>;
+    fn set_property(
+        &mut self,
+        name: GenCamCtrl,
+        value: &PropertyValue,
+        auto: bool,
+    ) -> GenCamResult<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]

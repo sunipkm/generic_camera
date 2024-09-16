@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// A custom name for a control.
 ///
 /// This is a 32-byte array that can be used to store a custom name for a control.
-/// 
+///
 /// # Note
 /// The name is trimmed to 32 bytes, so it is possible that the name is truncated.
 ///
