@@ -212,7 +212,7 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn list_properties(&self) -> Vec<Property>;
 
     /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> Option<(&PropertyValue, bool)>;
+    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(&PropertyValue, bool)>;
 
     /// Set a property by name.
     fn set_property(
