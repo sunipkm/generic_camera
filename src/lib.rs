@@ -27,7 +27,7 @@ pub use server::*;
 /// The version of the `generic_cam` crate.
 pub type GenCamResult<T> = std::result::Result<T, GenCamError>;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Default)]
 /// This structure defines a region of interest.
 /// The region of interest is defined in the un-binned pixel space.
 pub struct GenCamRoi {
@@ -127,7 +127,7 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn list_properties(&self) -> &HashMap<GenCamCtrl, Property>;
 
     /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(&PropertyValue, bool)>;
+    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(PropertyValue, bool)>;
 
     /// Set a property by name.
     fn set_property(
@@ -147,7 +147,7 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// This is a blocking call.
     ///
     /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn capture(&self) -> GenCamResult<GenericImage>;
+    fn capture(&mut self) -> GenCamResult<GenericImage>;
 
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
     fn start_exposure(&mut self) -> GenCamResult<()>;
@@ -161,12 +161,6 @@ pub trait GenCam: Send + std::fmt::Debug {
 
     /// Get the camera state.
     fn camera_state(&self) -> GenCamResult<GenCamState>;
-
-    /// Get camera exposure.
-    fn get_exposure(&self) -> GenCamResult<Duration>;
-
-    /// Set camera exposure.
-    fn set_exposure(&mut self, exposure: Duration) -> GenCamResult<Duration>;
 
     /// Set the image region of interest (ROI).
     ///
@@ -209,10 +203,10 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn camera_state(&self) -> GenCamResult<GenCamState>;
 
     /// Get optional capabilities of the camera.
-    fn list_properties(&self) -> Vec<Property>;
+    fn list_properties(&self) -> &HashMap<GenCamCtrl, Property>;
 
     /// Get a property by name.
-    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(&PropertyValue, bool)>;
+    fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(PropertyValue, bool)>;
 
     /// Set a property by name.
     fn set_property(

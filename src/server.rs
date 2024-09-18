@@ -1,6 +1,5 @@
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
-use std::time::Duration;
 
 use crate::AnyGenCam;
 #[allow(unused_imports)]
@@ -136,10 +135,6 @@ pub enum ClientCall {
     ImageReady,
     /// Get the current state of the camera. Calls the [`GenCam::camera_state`] method.
     CameraState,
-    /// Get the current exposure time. Calls the [`GenCam::get_exposure`] method.
-    GetExposure,
-    /// Set the exposure time. Calls the [`GenCam::set_exposure`] method.
-    SetExposure(Duration),
     /// Set the region of interest on the camera. Calls the [`GenCam::set_roi`] method.
     SetRoi(GenCamRoi),
     /// Get the current region of interest. Calls the [`GenCam::get_roi`] method.
@@ -260,20 +255,6 @@ impl GenCamServer {
                 let state = camera.camera_state();
                 match state {
                     Ok(s) => GenSrvResult::Ok(GenSrvOk::State(s)),
-                    Err(e) => GenSrvResult::Err(e),
-                }
-            }
-            GetExposure => {
-                let exposure = camera.get_exposure();
-                match exposure {
-                    Ok(e) => GenSrvResult::Ok(PropertyValue::Duration(e).into()),
-                    Err(e) => GenSrvResult::Err(e),
-                }
-            }
-            SetExposure(e) => {
-                let result = camera.set_exposure(e);
-                match result {
-                    Ok(e) => GenSrvResult::Ok(PropertyValue::Duration(e).into()),
                     Err(e) => GenSrvResult::Err(e),
                 }
             }

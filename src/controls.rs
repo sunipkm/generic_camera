@@ -84,6 +84,8 @@ pub enum DeviceCtrl {
     CoolerTemp,
     /// Configure the cooler power ([`PropertyType::Float`])
     CoolerPower,
+    /// Enable or disable the cooler ([`PropertyType::Bool`])
+    CoolerEnable,
     /// Configure high speed mode ([`PropertyType::Bool`])
     HighSpeedMode,
     /// Configure device fan ([`PropertyType::Bool`])
