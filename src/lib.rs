@@ -10,7 +10,6 @@ pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
@@ -80,7 +79,7 @@ pub enum GenCamState {
 /// A trait object for a camera unit.
 pub type AnyGenCam = Box<dyn GenCam>;
 /// A trait object for a camera info.
-pub type AnyGenCamInfo = Arc<Box<dyn GenCamInfo>>;
+pub type AnyGenCamInfo = Box<dyn GenCamInfo>;
 
 /// Trait for camera drivers. Provides functions to
 /// list available devices and connect to a device.
@@ -114,6 +113,9 @@ pub struct GenCamDescriptor {
 pub trait GenCam: Send + std::fmt::Debug {
     /// Get the [`GenCamInfo`] object, if available.
     fn info_handle(&self) -> Option<AnyGenCamInfo>;
+
+    /// Get the camera descriptor.
+    fn info(&self) -> GenCamResult<&GenCamDescriptor>;
 
     /// Get the camera vendor.
     fn vendor(&self) -> &str;

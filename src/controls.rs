@@ -180,6 +180,8 @@ pub enum ExposureCtrl {
     ExposureTime,
     /// Select exposure auto mode ([`PropertyType::EnumStr`] or [`PropertyType::Bool`])
     Auto,
+    /// Select maximum auto exposure time ([`PropertyType::Duration`])
+    AutoMaxExposure,
     /// Select exposure auto target brightness ([`PropertyType::Float`])
     AutoTargetBrightness,
     /// Select maximum gain for auto exposure ([`PropertyType::Float`])

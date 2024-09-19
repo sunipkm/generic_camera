@@ -62,6 +62,7 @@ impl GenCamDriver for GenCamDriverDummy {
             (PropertyValue::Duration(Duration::from_secs(1)), false),
         );
         Ok(Box::new(GenCamDummy {
+            desc: descriptor.clone(),
             name: descriptor.name.clone(),
             vendor: descriptor.vendor.clone(),
             caps,
@@ -87,6 +88,7 @@ impl GenCamDriver for GenCamDriverDummy {
 #[derive(Debug)]
 /// A dummy camera for testing purposes.
 pub struct GenCamDummy {
+    desc: GenCamDescriptor,
     name: String,
     vendor: String,
     caps: HashMap<GenCamCtrl, Property>,
@@ -101,6 +103,10 @@ pub struct GenCamDummy {
 impl GenCam for GenCamDummy {
     fn info_handle(&self) -> Option<crate::AnyGenCamInfo> {
         None
+    }
+
+    fn info(&self) -> GenCamResult<&GenCamDescriptor> {
+        Ok(&self.desc)
     }
 
     fn vendor(&self) -> &str {
