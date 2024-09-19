@@ -15,11 +15,11 @@ use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 
 /// The result of a generic camera server call.
-pub type GenSrvOutput<'a> = GenCamResult<GenSrvOk<'a>>;
+pub type GenSrvOutput<'a> = GenCamResult<GenSrvValue<'a>>;
 
 /// The Ok variant of a generic camera server call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GenSrvOk<'a> {
+pub enum GenSrvValue<'a> {
     /// No return value.
     Unit,
     /// A single [`PropertyValue`].
@@ -40,59 +40,59 @@ pub enum GenSrvOk<'a> {
     PropertyList(HashMap<GenCamCtrl, Property>),
 }
 
-impl<'a> From<()> for GenSrvOk<'a> {
+impl<'a> From<()> for GenSrvValue<'a> {
     fn from(_: ()) -> Self {
-        GenSrvOk::Unit
+        GenSrvValue::Unit
     }
 }
 
-impl<'a> From<(PropertyValue, bool)> for GenSrvOk<'a> {
+impl<'a> From<(PropertyValue, bool)> for GenSrvValue<'a> {
     fn from(value: (PropertyValue, bool)) -> Self {
         let (value, auto) = value;
-        GenSrvOk::Property {
+        GenSrvValue::Property {
             value,
             auto: Some(auto),
         }
     }
 }
 
-impl<'a> From<(&PropertyValue, bool)> for GenSrvOk<'a> {
+impl<'a> From<(&PropertyValue, bool)> for GenSrvValue<'a> {
     fn from(value: (&PropertyValue, bool)) -> Self {
         let (value, auto) = value;
-        GenSrvOk::Property {
+        GenSrvValue::Property {
             value: value.clone(),
             auto: Some(auto),
         }
     }
 }
 
-impl<'a> From<PropertyValue> for GenSrvOk<'a> {
+impl<'a> From<PropertyValue> for GenSrvValue<'a> {
     fn from(value: PropertyValue) -> Self {
-        GenSrvOk::Property { value, auto: None }
+        GenSrvValue::Property { value, auto: None }
     }
 }
 
-impl<'a> From<GenericImage<'a>> for GenSrvOk<'a> {
+impl<'a> From<GenericImage<'a>> for GenSrvValue<'a> {
     fn from(image: GenericImage<'a>) -> Self {
-        GenSrvOk::Image(image)
+        GenSrvValue::Image(image)
     }
 }
 
-impl<'a> From<GenCamRoi> for GenSrvOk<'a> {
+impl<'a> From<GenCamRoi> for GenSrvValue<'a> {
     fn from(roi: GenCamRoi) -> Self {
-        GenSrvOk::Roi(roi)
+        GenSrvValue::Roi(roi)
     }
 }
 
-impl<'a> From<GenCamState> for GenSrvOk<'a> {
+impl<'a> From<GenCamState> for GenSrvValue<'a> {
     fn from(state: GenCamState) -> Self {
-        GenSrvOk::State(state)
+        GenSrvValue::State(state)
     }
 }
 
-impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvOk<'a> {
+impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvValue<'a> {
     fn from(properties: HashMap<GenCamCtrl, Property>) -> Self {
-        GenSrvOk::PropertyList(properties)
+        GenSrvValue::PropertyList(properties)
     }
 }
 
@@ -101,14 +101,23 @@ impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvOk<'a> {
 pub enum GenSrvResult<'a> {
     #[serde(borrow)]
     /// A successful result.
-    Ok(GenSrvOk<'a>),
+    Ok(GenSrvValue<'a>),
     /// An error occurred.
     Err(GenCamError),
 }
 
+impl <'a>From<GenSrvResult<'a>> for GenCamResult<GenSrvValue<'a>> {
+    fn from(result: GenSrvResult<'a>) -> Self {
+        match result {
+            GenSrvResult::Ok(ok) => Ok(ok),
+            GenSrvResult::Err(e) => Err(e),
+        }
+    }
+}
+
 /// The possible calls that can be made to a generic camera server.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ClientCall {
+pub enum GenSrvCmd {
     /// Get the vendor of the camera. Calls the [`GenCam::vendor`] method.
     Vendor,
     /// Check if the camera is ready. Calls the [`GenCam::camera_ready`] method.
@@ -142,6 +151,17 @@ pub enum ClientCall {
 }
 
 /// A generic camera server that can manage multiple cameras.
+/// 
+/// Once a camera is added to the server, it can be accessed by its assigned ID.
+/// 
+/// # Examples
+/// ```no_run
+/// use generic_camera::GenCamServer;
+/// use generic_camera::GenCam;
+/// 
+/// let mut server = GenCamServer::default();
+/// let id = server.add_camera(...);
+/// ```
 #[derive(Debug, Default)]
 pub struct GenCamServer {
     cameras: HashMap<i32, AnyGenCam>,
@@ -176,99 +196,66 @@ impl GenCamServer {
     }
 
     /// Execute a client call on a camera by its ID.
-    pub fn execute_fn(&mut self, id: i32, sig: ClientCall) -> GenSrvResult {
+    pub fn execute_fn(&mut self, id: i32, sig: GenSrvCmd) -> GenCamResult<GenSrvValue> {
         let Some(camera) = self.get_camera_mut(id) else {
-            return GenSrvResult::Err(GenCamError::InvalidId(id));
+            return Err(GenCamError::InvalidId(id));
         };
-        use ClientCall::*;
-        match sig {
+        use GenSrvCmd::*;
+        let res = match sig {
             Vendor => {
                 let vendor = camera.vendor();
-                GenSrvResult::Ok(PropertyValue::EnumStr(vendor.to_string()).into())
+                PropertyValue::EnumStr(vendor.to_string()).into()
             }
             CameraReady => {
                 let ready = camera.camera_ready();
-                GenSrvResult::Ok(PropertyValue::Bool(ready).into())
+                PropertyValue::Bool(ready).into()
             }
             CameraName => {
                 let name = camera.camera_name();
-                GenSrvResult::Ok(PropertyValue::EnumStr(name.to_string()).into())
+                PropertyValue::EnumStr(name.to_string()).into()
             }
             ListProperties => {
                 let properties = camera.list_properties();
-                GenSrvResult::Ok(GenSrvOk::PropertyList(properties.clone()))
+                GenSrvValue::PropertyList(properties.clone())
             }
             GetProperty(ctrl) => {
-                let res = camera.get_property(ctrl);
-                match res {
-                    Ok(prop) => GenSrvResult::Ok(prop.into()),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.get_property(ctrl)?.into()
             }
             SetProperty(ctrl, value, auto) => {
-                let result = camera.set_property(ctrl, &value, auto);
-                match result {
-                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+               camera.set_property(ctrl, &value, auto)?.into()
             }
             CancelCapture => {
-                let result = camera.cancel_capture();
-                match result {
-                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.cancel_capture()?.into()
+
+                
             }
             IsCapturing => {
-                let capturing = camera.is_capturing();
-                GenSrvResult::Ok(PropertyValue::Bool(capturing).into())
+                PropertyValue::Bool(camera.is_capturing()).into()
             }
             Capture => {
-                let result = camera.capture();
-                match result {
-                    Ok(image) => GenSrvResult::Ok(GenSrvOk::Image(image)),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.capture()?.into()
             }
             StartExposure => {
-                let result = camera.start_exposure();
-                match result {
-                    Ok(_) => GenSrvResult::Ok(GenSrvOk::Unit),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.start_exposure()?.into()
+                
             }
             DownloadImage => {
-                let result = camera.download_image();
-                match result {
-                    Ok(image) => GenSrvResult::Ok(GenSrvOk::Image(image)),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.download_image()?.into()
+                
             }
             ImageReady => {
-                let ready = camera.image_ready();
-                match ready {
-                    Ok(b) => GenSrvResult::Ok(PropertyValue::Bool(b).into()),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                PropertyValue::Bool(camera.image_ready()?).into()
             }
             CameraState => {
-                let state = camera.camera_state();
-                match state {
-                    Ok(s) => GenSrvResult::Ok(GenSrvOk::State(s)),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                camera.camera_state()?.into()
             }
             SetRoi(roi) => {
-                let result = camera.set_roi(&roi);
-                match result {
-                    Ok(r) => GenSrvResult::Ok(GenSrvOk::Roi(*r)),
-                    Err(e) => GenSrvResult::Err(e),
-                }
+                (*camera.set_roi(&roi)?).into()
             }
             GetRoi => {
-                let roi = camera.get_roi();
-                GenSrvResult::Ok(GenSrvOk::Roi(*roi))
+                (*camera.get_roi()).into()
             }
-        }
+        };
+        Ok(res)
     }
 }

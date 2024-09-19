@@ -29,8 +29,9 @@ serde_json = "1.0"
 
 [features]
 server = ["dep:rand"]
+dummy = ["dep:rand"]
 # default features
-default = ["server"]
+default = ["server", "dummy"]
 
 [package.metadata.docs.rs]
 # document all features

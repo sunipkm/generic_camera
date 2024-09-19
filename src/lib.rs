@@ -23,34 +23,35 @@ mod server;
 #[cfg(feature = "server")]
 #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 pub use server::*;
+#[cfg(feature = "dummy")]
+mod dummy;
+#[cfg(feature = "dummy")]
+#[cfg_attr(docsrs, doc(cfg(feature = "dummy")))]
+pub use dummy::*;
 
 /// The version of the `generic_cam` crate.
 pub type GenCamResult<T> = std::result::Result<T, GenCamError>;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Default)]
 /// This structure defines a region of interest.
-/// The region of interest is defined in the un-binned pixel space.
+/// The region of interest is defined in the binned pixel space.
 pub struct GenCamRoi {
-    /// The minimum X coordinate (in binned pixel space).
+    /// The minimum X coordinate (upper left, in binned pixel space).
     pub x_min: u16,
-    /// The minimum Y coordinate (in binned pixel space).
+    /// The minimum Y coordinate (upper left, in binned pixel space).
     pub y_min: u16,
     /// The image width (X axis, in binned pixel space).
     pub width: u16,
     /// The image height (Y axis, in binned pixel space).
     pub height: u16,
-    /// The X binning factor.
-    pub bin_x: u8,
-    /// The Y binning factor.
-    pub bin_y: u8,
 }
 
 impl Display for GenCamRoi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ROI: Origin = ({}, {}), Image Size = ({} x {}), Bin = ({}, {})",
-            self.x_min, self.y_min, self.width, self.height, self.bin_x, self.bin_y
+            "ROI: Origin = ({}, {}), Image Size = ({} x {})",
+            self.x_min, self.y_min, self.width, self.height
         )
     }
 }
@@ -94,7 +95,7 @@ pub trait GenCamDriver {
     fn connect_first_device(&mut self) -> GenCamResult<AnyGenCam>;
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, Default)]
 /// A structure to hold information about a camera device.
 pub struct GenCamDescriptor {
     /// The camera ID.
