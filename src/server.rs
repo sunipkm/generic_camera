@@ -1,3 +1,7 @@
+/*!
+ * # Generic Camera Server
+ * This module contains the implementation of a generic camera server that can manage multiple cameras.
+ */
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 
@@ -5,6 +9,7 @@ use crate::AnyGenCam;
 #[allow(unused_imports)]
 use crate::GenCam;
 use crate::GenCamCtrl;
+use crate::GenCamDescriptor;
 use crate::GenCamError;
 use crate::GenCamResult;
 use crate::GenCamRoi;
@@ -22,6 +27,8 @@ pub type GenSrvOutput<'a> = GenCamResult<GenSrvValue<'a>>;
 pub enum GenSrvValue<'a> {
     /// No return value.
     Unit,
+    /// Camera information in a [`GenCamDescriptor`].
+    Info(GenCamDescriptor),
     /// A single [`PropertyValue`].
     Property {
         /// The value of the property.
@@ -43,6 +50,18 @@ pub enum GenSrvValue<'a> {
 impl<'a> From<()> for GenSrvValue<'a> {
     fn from(_: ()) -> Self {
         GenSrvValue::Unit
+    }
+}
+
+impl<'a> From<&GenCamDescriptor> for GenSrvValue<'a> {
+    fn from(info: &GenCamDescriptor) -> Self {
+        GenSrvValue::Info(info.clone())
+    }
+}
+
+impl<'a> From<GenCamDescriptor> for GenSrvValue<'a> {
+    fn from(info: GenCamDescriptor) -> Self {
+        GenSrvValue::Info(info)
     }
 }
 
@@ -96,25 +115,6 @@ impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvValue<'a> {
     }
 }
 
-/// The result of a generic camera server call.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GenSrvResult<'a> {
-    #[serde(borrow)]
-    /// A successful result.
-    Ok(GenSrvValue<'a>),
-    /// An error occurred.
-    Err(GenCamError),
-}
-
-impl <'a>From<GenSrvResult<'a>> for GenCamResult<GenSrvValue<'a>> {
-    fn from(result: GenSrvResult<'a>) -> Self {
-        match result {
-            GenSrvResult::Ok(ok) => Ok(ok),
-            GenSrvResult::Err(e) => Err(e),
-        }
-    }
-}
-
 /// The possible calls that can be made to a generic camera server.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum GenSrvCmd {
@@ -124,6 +124,8 @@ pub enum GenSrvCmd {
     CameraReady,
     /// Get the name of the camera. Calls the [`GenCam::camera_name`] method.
     CameraName,
+    /// Get the camera info. Calls the [`GenCam::info`] method.
+    Info,
     /// List all properties available on the camera. Calls the [`GenCam::list_properties`] method.
     ListProperties,
     /// Get a specific property from the camera. Calls the [`GenCam::get_property`] method.
@@ -151,14 +153,14 @@ pub enum GenSrvCmd {
 }
 
 /// A generic camera server that can manage multiple cameras.
-/// 
+///
 /// Once a camera is added to the server, it can be accessed by its assigned ID.
-/// 
+///
 /// # Examples
-/// ```no_run
-/// use generic_camera::GenCamServer;
+/// ```rust,ignore
+/// use generic_camera::server::GenCamServer;
 /// use generic_camera::GenCam;
-/// 
+///
 /// let mut server = GenCamServer::default();
 /// let id = server.add_camera(...);
 /// ```
@@ -214,47 +216,25 @@ impl GenCamServer {
                 let name = camera.camera_name();
                 PropertyValue::EnumStr(name.to_string()).into()
             }
+            Info => {
+                let info = camera.info()?.clone();
+                info.into()
+            }
             ListProperties => {
                 let properties = camera.list_properties();
                 GenSrvValue::PropertyList(properties.clone())
             }
-            GetProperty(ctrl) => {
-                camera.get_property(ctrl)?.into()
-            }
-            SetProperty(ctrl, value, auto) => {
-               camera.set_property(ctrl, &value, auto)?.into()
-            }
-            CancelCapture => {
-                camera.cancel_capture()?.into()
-
-                
-            }
-            IsCapturing => {
-                PropertyValue::Bool(camera.is_capturing()).into()
-            }
-            Capture => {
-                camera.capture()?.into()
-            }
-            StartExposure => {
-                camera.start_exposure()?.into()
-                
-            }
-            DownloadImage => {
-                camera.download_image()?.into()
-                
-            }
-            ImageReady => {
-                PropertyValue::Bool(camera.image_ready()?).into()
-            }
-            CameraState => {
-                camera.camera_state()?.into()
-            }
-            SetRoi(roi) => {
-                (*camera.set_roi(&roi)?).into()
-            }
-            GetRoi => {
-                (*camera.get_roi()).into()
-            }
+            GetProperty(ctrl) => camera.get_property(ctrl)?.into(),
+            SetProperty(ctrl, value, auto) => camera.set_property(ctrl, &value, auto)?.into(),
+            CancelCapture => camera.cancel_capture()?.into(),
+            IsCapturing => PropertyValue::Bool(camera.is_capturing()).into(),
+            Capture => camera.capture()?.into(),
+            StartExposure => camera.start_exposure()?.into(),
+            DownloadImage => camera.download_image()?.into(),
+            ImageReady => PropertyValue::Bool(camera.image_ready()?).into(),
+            CameraState => camera.camera_state()?.into(),
+            SetRoi(roi) => (*camera.set_roi(&roi)?).into(),
+            GetRoi => (*camera.get_roi()).into(),
         };
         Ok(res)
     }

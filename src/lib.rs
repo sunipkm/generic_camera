@@ -3,9 +3,20 @@
 /*!
  * # Generic Camera Interface
  * This crate provides a generic interface for controlling cameras.
+ *
+ * ## Features
+ * - `server`: Enables the generic camera server.
+ * - `dummy`: Enables the dummy camera implementation.
+ *
+ * ## Usage
+ * To use the crate, add the following to your `Cargo.toml`:
+ * ```toml
+ * [dependencies]
+ * generic-camera = "0.0"
+ * ```
  */
 
-pub use controls::*;
+pub use controls::GenCamCtrl;
 pub use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,20 +24,16 @@ use std::hash::Hash;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
-pub use crate::property::*;
+pub use crate::property::{Property, PropertyError, PropertyType, PropertyValue};
 
-mod controls;
-mod property;
-#[cfg(feature = "server")]
-mod server;
-#[cfg(feature = "server")]
-#[cfg_attr(docsrs, doc(cfg(feature = "server")))]
-pub use server::*;
-#[cfg(feature = "dummy")]
-mod dummy;
+pub mod controls;
 #[cfg(feature = "dummy")]
 #[cfg_attr(docsrs, doc(cfg(feature = "dummy")))]
-pub use dummy::*;
+pub mod dummy;
+pub mod property;
+#[cfg(feature = "server")]
+#[cfg_attr(docsrs, doc(cfg(feature = "server")))]
+pub mod server;
 
 /// The version of the `generic_cam` crate.
 pub type GenCamResult<T> = std::result::Result<T, GenCamError>;

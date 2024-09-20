@@ -1,3 +1,7 @@
+/*!
+ * # Controls
+ * Defines standard controls for cameras.
+ */
 #[allow(unused_imports)]
 use crate::PropertyType;
 use documented::{Documented, DocumentedVariants};
@@ -13,7 +17,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Example
 /// ```
-/// use generic_camera::CustomName;
+/// use generic_camera::controls::CustomName;
 ///
 /// let name: CustomName = "UUID".into();
 /// assert_eq!(name.as_str(), "UUID");

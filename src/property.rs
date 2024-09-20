@@ -1,3 +1,7 @@
+/*!
+ * # Property
+ * Encapsulates values and limits of a property.
+ */
 use std::time::Duration;
 
 use crate::GenCamPixelBpp;

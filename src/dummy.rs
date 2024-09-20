@@ -1,3 +1,21 @@
+/*!
+# Dummy camera driver
+
+This module contains a dummy camera that can be used for testing purposes, and as a reference or implementing new cameras.
+# Usage
+```
+use generic_camera::dummy::{GenCamDriverDummy, GenCamDummy};
+use generic_camera::{GenCam, GenCamDriver};
+use generic_camera::{GenCamCtrl, controls::ExposureCtrl};
+use std::time::Duration;
+let mut driver = GenCamDriverDummy {};
+let mut camera = driver.connect_first_device().expect("Failed to connect to camera");
+
+let img = camera.capture().expect("Failed to capture image");
+let exposure: Duration = camera.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime)).expect("Failed to get exposure time").0.try_into().expect("Failed to convert exposure time");
+println!("Exposure time: {:?}", exposure);
+```
+*/
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -17,8 +35,9 @@ use rand::{thread_rng, Rng};
 use refimage::{DynamicImageData, ImageData};
 
 use crate::{
-    ExposureCtrl, GenCam, GenCamCtrl, GenCamDescriptor, GenCamDriver, GenCamError, GenCamResult,
-    GenCamRoi, GenCamState, Property, PropertyError, PropertyLims, PropertyValue,
+    controls::ExposureCtrl, property::PropertyLims, GenCam, GenCamCtrl, GenCamDescriptor,
+    GenCamDriver, GenCamError, GenCamResult, GenCamRoi, GenCamState, Property, PropertyError,
+    PropertyValue,
 };
 
 #[derive(Debug)]
@@ -81,7 +100,11 @@ impl GenCamDriver for GenCamDriverDummy {
     }
 
     fn connect_first_device(&mut self) -> GenCamResult<crate::AnyGenCam> {
-        todo!()
+        let desc = self
+            .list_devices()?
+            .pop()
+            .ok_or(GenCamError::NoCamerasAvailable)?;
+        self.connect_device(&desc)
     }
 }
 
@@ -174,11 +197,20 @@ impl GenCam for GenCamDummy {
         if self.capturing.load(SeqCst) {
             return Err(GenCamError::ExposureInProgress);
         }
-        self.start.borrow_mut().replace(Instant::now());
+        let now = Instant::now();
+        let (exp, _) = self.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
+        let exp = exp.try_into().map_err(|e| GenCamError::PropertyError {
+            control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
+            error: e,
+        })?;
+        self.start.borrow_mut().replace(now.clone());
         self.capturing.store(true, SeqCst);
         self.imgready.store(false, Relaxed);
         loop {
             if !self.capturing.load(Relaxed) {
+                break;
+            }
+            if now.elapsed() >= exp {
                 break;
             }
             thread::sleep(Duration::from_millis(10));
@@ -200,7 +232,13 @@ impl GenCam for GenCamDummy {
         if self.capturing.load(SeqCst) {
             return Err(GenCamError::ExposureInProgress);
         }
-        self.start.borrow_mut().replace(Instant::now());
+        let now = Instant::now();
+        let (exp, _) = self.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
+        let exp = exp.try_into().map_err(|e| GenCamError::PropertyError {
+            control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
+            error: e,
+        })?;
+        self.start.borrow_mut().replace(now.clone());
         self.capturing.store(true, SeqCst);
         self.imgready.store(false, Relaxed);
         let capturing = self.capturing.clone();
@@ -209,6 +247,9 @@ impl GenCam for GenCamDummy {
         thread::spawn(move || {
             loop {
                 if !capturing.load(SeqCst) {
+                    break;
+                }
+                if now.elapsed() >= exp {
                     break;
                 }
                 thread::sleep(Duration::from_millis(10));
@@ -261,10 +302,12 @@ impl GenCam for GenCamDummy {
     }
 
     fn camera_state(&self) -> GenCamResult<GenCamState> {
-        let state = if self.capturing.load(SeqCst) {
-            GenCamState::Exposing(Some(self.start.borrow().unwrap().elapsed()))
-        } else if self.imgready.load(Relaxed) {
+        let capturing = self.capturing.load(SeqCst);
+        let imgready = self.imgready.load(Relaxed);
+        let state = if capturing && imgready {
             GenCamState::ExposureFinished
+        } else if capturing {
+            GenCamState::Exposing(Some(self.start.borrow().unwrap().elapsed()))
         } else {
             GenCamState::Idle
         };
