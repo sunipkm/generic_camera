@@ -1,6 +1,6 @@
 [package]
 name = "generic-camera"
-version = "0.0.3" # change in readme.md
+version = "0.0.4" # change in readme.md
 edition = "2021"
 rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
@@ -19,7 +19,7 @@ exclude = [".github"]
 [dependencies]
 documented = "0.6"
 rand = { version = "0.8", optional = true }
-refimage = { version = "0.6", default-features = false }
+refimage = { version = "0.8", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 
