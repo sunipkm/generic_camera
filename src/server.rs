@@ -3,6 +3,7 @@
  * This module contains the implementation of a generic camera server that can manage multiple cameras.
  */
 use rand::{thread_rng, Rng};
+use refimage::GenericImageOwned;
 use std::collections::HashMap;
 
 use crate::AnyGenCam;
@@ -16,15 +17,14 @@ use crate::GenCamRoi;
 use crate::GenCamState;
 use crate::Property;
 use crate::PropertyValue;
-use refimage::GenericImage;
 use serde::{Deserialize, Serialize};
 
 /// The result of a generic camera server call.
-pub type GenSrvOutput<'a> = GenCamResult<GenSrvValue<'a>>;
+pub type GenSrvOutput<'a> = GenCamResult<GenSrvValue>;
 
 /// The Ok variant of a generic camera server call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GenSrvValue<'a> {
+pub enum GenSrvValue {
     /// No return value.
     Unit,
     /// Camera information in a [`GenCamDescriptor`].
@@ -36,9 +36,8 @@ pub enum GenSrvValue<'a> {
         /// The auto setting of the property, if applicable.
         auto: Option<bool>,
     },
-    #[serde(borrow)]
     /// A captured image from the camera.
-    Image(GenericImage<'a>),
+    Image(GenericImageOwned),
     /// Region of interest defined on the camera.
     Roi(GenCamRoi),
     /// The current state of the camera.
@@ -47,25 +46,25 @@ pub enum GenSrvValue<'a> {
     PropertyList(HashMap<GenCamCtrl, Property>),
 }
 
-impl<'a> From<()> for GenSrvValue<'a> {
+impl From<()> for GenSrvValue {
     fn from(_: ()) -> Self {
         GenSrvValue::Unit
     }
 }
 
-impl<'a> From<&GenCamDescriptor> for GenSrvValue<'a> {
+impl From<&GenCamDescriptor> for GenSrvValue {
     fn from(info: &GenCamDescriptor) -> Self {
         GenSrvValue::Info(info.clone())
     }
 }
 
-impl<'a> From<GenCamDescriptor> for GenSrvValue<'a> {
+impl From<GenCamDescriptor> for GenSrvValue {
     fn from(info: GenCamDescriptor) -> Self {
         GenSrvValue::Info(info)
     }
 }
 
-impl<'a> From<(PropertyValue, bool)> for GenSrvValue<'a> {
+impl From<(PropertyValue, bool)> for GenSrvValue {
     fn from(value: (PropertyValue, bool)) -> Self {
         let (value, auto) = value;
         GenSrvValue::Property {
@@ -75,7 +74,7 @@ impl<'a> From<(PropertyValue, bool)> for GenSrvValue<'a> {
     }
 }
 
-impl<'a> From<(&PropertyValue, bool)> for GenSrvValue<'a> {
+impl From<(&PropertyValue, bool)> for GenSrvValue {
     fn from(value: (&PropertyValue, bool)) -> Self {
         let (value, auto) = value;
         GenSrvValue::Property {
@@ -85,31 +84,31 @@ impl<'a> From<(&PropertyValue, bool)> for GenSrvValue<'a> {
     }
 }
 
-impl<'a> From<PropertyValue> for GenSrvValue<'a> {
+impl From<PropertyValue> for GenSrvValue {
     fn from(value: PropertyValue) -> Self {
         GenSrvValue::Property { value, auto: None }
     }
 }
 
-impl<'a> From<GenericImage<'a>> for GenSrvValue<'a> {
-    fn from(image: GenericImage<'a>) -> Self {
+impl From<GenericImageOwned> for GenSrvValue {
+    fn from(image: GenericImageOwned) -> Self {
         GenSrvValue::Image(image)
     }
 }
 
-impl<'a> From<GenCamRoi> for GenSrvValue<'a> {
+impl From<GenCamRoi> for GenSrvValue {
     fn from(roi: GenCamRoi) -> Self {
         GenSrvValue::Roi(roi)
     }
 }
 
-impl<'a> From<GenCamState> for GenSrvValue<'a> {
+impl From<GenCamState> for GenSrvValue {
     fn from(state: GenCamState) -> Self {
         GenSrvValue::State(state)
     }
 }
 
-impl<'a> From<HashMap<GenCamCtrl, Property>> for GenSrvValue<'a> {
+impl From<HashMap<GenCamCtrl, Property>> for GenSrvValue {
     fn from(properties: HashMap<GenCamCtrl, Property>) -> Self {
         GenSrvValue::PropertyList(properties)
     }
@@ -228,9 +227,9 @@ impl GenCamServer {
             SetProperty(ctrl, value, auto) => camera.set_property(ctrl, &value, auto)?.into(),
             CancelCapture => camera.cancel_capture()?.into(),
             IsCapturing => PropertyValue::Bool(camera.is_capturing()).into(),
-            Capture => camera.capture()?.into(),
+            Capture => GenSrvValue::Image(camera.capture()?.into()),
             StartExposure => camera.start_exposure()?.into(),
-            DownloadImage => camera.download_image()?.into(),
+            DownloadImage => GenSrvValue::Image(camera.download_image()?.into()),
             ImageReady => PropertyValue::Bool(camera.image_ready()?).into(),
             CameraState => camera.camera_state()?.into(),
             SetRoi(roi) => (*camera.set_roi(&roi)?).into(),

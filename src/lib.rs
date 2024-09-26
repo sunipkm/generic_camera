@@ -18,6 +18,7 @@
 
 pub use controls::GenCamCtrl;
 pub use refimage::GenericImage;
+use refimage::GenericImageRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -157,13 +158,13 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// This is a blocking call.
     ///
     /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn capture(&mut self) -> GenCamResult<GenericImage>;
+    fn capture(&mut self) -> GenCamResult<GenericImageRef>;
 
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
     fn start_exposure(&mut self) -> GenCamResult<()>;
 
     /// Download the image captured in [`GenCam::start_exposure`].
-    fn download_image(&mut self) -> GenCamResult<GenericImage>;
+    fn download_image(&mut self) -> GenCamResult<GenericImageRef>;
 
     /// Get exposure status. This function is useful for checking if a
     /// non-blocking exposure has finished running.

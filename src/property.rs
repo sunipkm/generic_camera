@@ -524,6 +524,58 @@ impl From<&PropertyValue> for PropertyType {
     }
 }
 
+impl PropertyValue {
+    /// Get the value as a boolean
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            PropertyValue::Bool(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as an integer
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            PropertyValue::Int(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as a floating point number
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            PropertyValue::Float(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as an unsigned integer
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            PropertyValue::Unsigned(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as a duration
+    pub fn as_duration(&self) -> Option<Duration> {
+        match self {
+            PropertyValue::Duration(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as a pixel format
+    pub fn as_pixel_fmt(&self) -> Option<GenCamPixelBpp> {
+        match self {
+            PropertyValue::PixelFmt(val) => Some(*val),
+            _ => None,
+        }
+    }
+    /// Get the value as an enum string
+    pub fn as_enum_str(&self) -> Option<&str> {
+        match self {
+            PropertyValue::EnumStr(val) => Some(val),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 /// The type of a property

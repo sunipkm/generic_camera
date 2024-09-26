@@ -24,7 +24,7 @@ use std::{
             AtomicBool,
             Ordering::{Relaxed, SeqCst},
         },
-        Arc, Mutex,
+        Arc,
     },
     thread,
     time::{Duration, Instant, SystemTime},
@@ -32,7 +32,7 @@ use std::{
 
 use rand::{thread_rng, Rng};
 
-use refimage::{DynamicImageData, ImageData};
+use refimage::{DynamicImageRef, GenericImageRef, ImageRef};
 
 use crate::{
     controls::ExposureCtrl, property::PropertyLims, GenCam, GenCamCtrl, GenCamDescriptor,
@@ -93,7 +93,7 @@ impl GenCamDriver for GenCamDriverDummy {
                 width: 1920,
                 height: 1080,
             },
-            data: Arc::new(Mutex::new(vec![0; 1920 * 1080 * 3])),
+            data: vec![0; 1920 * 1080 * 3],
             imgready: Arc::new(AtomicBool::new(false)),
             start: RefCell::new(None),
         }))
@@ -119,7 +119,7 @@ pub struct GenCamDummy {
     capturing: Arc<AtomicBool>,
     imgready: Arc<AtomicBool>,
     roi: GenCamRoi,
-    data: Arc<Mutex<Vec<u8>>>,
+    data: Vec<u8>,
     start: RefCell<Option<Instant>>,
 }
 
@@ -188,7 +188,7 @@ impl GenCam for GenCamDummy {
         self.capturing.load(SeqCst)
     }
 
-    fn capture(&mut self) -> GenCamResult<refimage::GenericImage> {
+    fn capture(&mut self) -> GenCamResult<GenericImageRef> {
         if self.imgready.load(Relaxed) {
             self.imgready.store(false, Relaxed);
             self.capturing.store(false, SeqCst);
@@ -203,7 +203,7 @@ impl GenCam for GenCamDummy {
             control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
             error: e,
         })?;
-        self.start.borrow_mut().replace(now.clone());
+        self.start.borrow_mut().replace(now);
         self.capturing.store(true, SeqCst);
         self.imgready.store(false, Relaxed);
         loop {
@@ -214,10 +214,6 @@ impl GenCam for GenCamDummy {
                 break;
             }
             thread::sleep(Duration::from_millis(10));
-        }
-        {
-            let mut data = self.data.lock().unwrap();
-            thread_rng().fill(data.as_mut_slice());
         }
         self.imgready.store(true, Relaxed);
         self.download_image()
@@ -238,12 +234,11 @@ impl GenCam for GenCamDummy {
             control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
             error: e,
         })?;
-        self.start.borrow_mut().replace(now.clone());
+        self.start.borrow_mut().replace(now);
         self.capturing.store(true, SeqCst);
         self.imgready.store(false, Relaxed);
         let capturing = self.capturing.clone();
         let imgready = self.imgready.clone();
-        let img = self.data.clone();
         thread::spawn(move || {
             loop {
                 if !capturing.load(SeqCst) {
@@ -254,33 +249,29 @@ impl GenCam for GenCamDummy {
                 }
                 thread::sleep(Duration::from_millis(10));
             }
-            {
-                let mut img = img.lock().unwrap();
-                thread_rng().fill(img.as_mut_slice());
-            }
             imgready.store(true, Relaxed);
         });
         Ok(())
     }
 
-    fn download_image(&mut self) -> GenCamResult<refimage::GenericImage> {
+    fn download_image(&mut self) -> GenCamResult<GenericImageRef> {
         let state = self.camera_state()?;
         match state {
             GenCamState::Exposing(_) => Err(GenCamError::ExposureInProgress),
             GenCamState::Idle => Err(GenCamError::ExposureNotStarted),
             GenCamState::ExposureFinished => {
-                let data = self.data.lock().unwrap().clone();
+                thread_rng().fill(self.data.as_mut_slice());
                 self.imgready.store(false, Relaxed);
                 self.capturing.store(false, SeqCst);
-                let img = ImageData::from_owned(
-                    data,
+                let img = ImageRef::new(
+                    &mut self.data,
                     self.roi.width as _,
                     self.roi.height as _,
                     refimage::ColorSpace::Rgb,
                 )
                 .map_err(|e| GenCamError::InvalidImageType(e.to_string()))?;
-                let img = DynamicImageData::from(img);
-                let mut img = refimage::GenericImage::new(SystemTime::now(), img);
+                let img = DynamicImageRef::from(img);
+                let mut img = GenericImageRef::new(SystemTime::now(), img);
                 img.insert_key("XOFST", self.roi.x_min as u32)
                     .map_err(|e| {
                         GenCamError::InvalidImageType(format!("Error inserting key: {}", e))
