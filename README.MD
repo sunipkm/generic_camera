@@ -6,7 +6,7 @@
 
 ## `GenCam`
 `GenCam` defines functionality to query a specific driver for its capabilities (`get_properties`), which return a map of camera settings, along with legal values, controlled using the `get_property` and `set_property` functions.
-`start_exposure`, `image_ready` and `download_image` functions allow non-blocking image capture, and `capture` blocks to return an image. `generic-camera` uses `refimage::GenericImage` to support arbitrary image encapsulation (`u8`, `u16` and `f32` data types) while being serdes compatible and supporting metadata.
+`start_exposure`, `image_ready` and `download_image` functions allow non-blocking image capture, and `capture` blocks to return an image. `generic-camera` uses `refimage::GenericImageRef` to support arbitrary image encapsulation (`u8`, `u16` and `f32` data types) while being serdes compatible and supporting metadata.
 
 ## `GenCamCtrl`
 `GenCamCtrl` encapsulates control of different aspects of a camera (serdes compatible). 
