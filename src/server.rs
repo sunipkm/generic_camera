@@ -20,7 +20,7 @@ use crate::PropertyValue;
 use serde::{Deserialize, Serialize};
 
 /// The result of a generic camera server call.
-pub type GenSrvOutput<'a> = GenCamResult<GenSrvValue>;
+pub type GenSrvOutput = GenCamResult<GenSrvValue>;
 
 /// The Ok variant of a generic camera server call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -165,29 +165,29 @@ pub enum GenSrvCmd {
 /// ```
 #[derive(Debug, Default)]
 pub struct GenCamServer {
-    cameras: HashMap<i32, AnyGenCam>,
+    cameras: HashMap<u32, AnyGenCam>,
 }
 
 impl GenCamServer {
     /// Add a camera to the server and return the camera's assigned ID.
-    pub fn add_camera(&mut self, camera: AnyGenCam) -> i32 {
+    pub fn add_camera(&mut self, camera: AnyGenCam) -> u32 {
         let id = thread_rng().gen();
         self.cameras.insert(id, camera);
         id
     }
 
     /// Get a reference to a camera by its ID.
-    pub fn get_camera(&self, id: i32) -> Option<&AnyGenCam> {
+    pub fn get_camera(&self, id: u32) -> Option<&AnyGenCam> {
         self.cameras.get(&id)
     }
 
     /// Get a mutable reference to a camera by its ID.
-    pub fn get_camera_mut(&mut self, id: i32) -> Option<&mut AnyGenCam> {
+    pub fn get_camera_mut(&mut self, id: u32) -> Option<&mut AnyGenCam> {
         self.cameras.get_mut(&id)
     }
 
     /// Remove a camera from the server by its ID.
-    pub fn remove_camera(&mut self, id: i32) -> Option<AnyGenCam> {
+    pub fn remove_camera(&mut self, id: u32) -> Option<AnyGenCam> {
         self.cameras.remove(&id)
     }
 
@@ -197,9 +197,9 @@ impl GenCamServer {
     }
 
     /// Execute a client call on a camera by its ID.
-    pub fn execute_fn(&mut self, id: i32, sig: GenSrvCmd) -> GenCamResult<GenSrvValue> {
+    pub fn execute_fn(&mut self, id: u32, sig: GenSrvCmd) -> GenCamResult<GenSrvValue> {
         let Some(camera) = self.get_camera_mut(id) else {
-            return Err(GenCamError::InvalidId(id));
+            return Err(GenCamError::InvalidId(id as _));
         };
         use GenSrvCmd::*;
         let res = match sig {
