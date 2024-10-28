@@ -166,14 +166,17 @@ pub enum GenSrvCmd {
 #[derive(Debug, Default)]
 pub struct GenCamServer {
     cameras: HashMap<u32, AnyGenCam>,
+    infos: HashMap<u32, GenCamDescriptor>,
 }
 
 impl GenCamServer {
     /// Add a camera to the server and return the camera's assigned ID.
-    pub fn add_camera(&mut self, camera: AnyGenCam) -> u32 {
+    pub fn add_camera(&mut self, camera: AnyGenCam) -> GenCamResult<u32> {
         let id = thread_rng().gen();
+        let info = camera.info()?.clone();
         self.cameras.insert(id, camera);
-        id
+        self.infos.insert(id, info);
+        Ok(id)
     }
 
     /// Get a reference to a camera by its ID.
@@ -194,6 +197,11 @@ impl GenCamServer {
     /// Get the number of cameras currently connected to the server.
     pub fn num_cameras(&self) -> usize {
         self.cameras.len()
+    }
+
+    /// Get the camera information map.
+    pub fn list_cameras(&self) -> &HashMap<u32, GenCamDescriptor> {
+        &self.infos
     }
 
     /// Execute a client call on a camera by its ID.
