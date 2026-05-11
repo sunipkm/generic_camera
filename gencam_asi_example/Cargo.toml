@@ -1,0 +1,22 @@
+[package]
+name = "gencam_asi_example"
+version = "0.0.3"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+configparser = "3.1"
+ctrlc = "3.4"
+generic-camera-asi = { path = "../generic_camera_asi" }
+refimage = { version = ">= 1.0.0-pre", features = ["default", "image", "fitsio"] }
+image = { version = "0.25", default-features = false, features = [
+    "rayon",
+    "png",
+], optional = true }
+rppal = { version = "0.19", optional = true }
+
+[features]
+default = ["image"]
+uhubctl_pi = []
+uhubctl_toradex = []
+full = ["image", "uhubctl_pi"]
