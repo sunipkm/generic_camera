@@ -21,16 +21,21 @@ impl TargetOs {
 enum TargetArch {
     X86,
     X64,
-    Arm,
+    Armv7,
     Arm64,
 }
 impl TargetArch {
     fn get() -> Self {
-        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+        let arch = std::env::var("CARGO_CFG_TARGET_ARCH")
+            .unwrap()
+            .to_ascii_lowercase();
         match &*arch {
             "x86" => Self::X86,
             "x86_64" => Self::X64,
-            "arm" => Self::Arm,
+            // I'm not quite sure if this is right,
+            // needs more testing. I don't have a linux arm
+            // device
+            "armv7" | "arm" => Self::Armv7,
             "aarch64" => Self::Arm64,
             _ => panic!("Unsupported architecture {arch}"),
         }
@@ -40,10 +45,10 @@ impl TargetArch {
         match (self, TargetOs::get()) {
             (Self::X86, TargetOs::Linux) => "x86",
             (Self::X64, TargetOs::Linux) => "x64",
-            (Self::Arm, TargetOs::Macos) => unreachable!(),
+            (Self::Armv7, TargetOs::Macos) => unreachable!(),
             (Self::Arm64, TargetOs::Macos) => "mac_arm64",
             // I'm not so sure about the linux ARM ones
-            (Self::Arm, TargetOs::Linux) => "armv7",
+            (Self::Armv7, TargetOs::Linux) => "armv7",
             (Self::Arm64, TargetOs::Linux) => "armv8",
             (arch, os) => panic!("Unsupported combination of arch and target os: {arch:?} {os:?}"),
         }
