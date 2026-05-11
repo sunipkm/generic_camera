@@ -6,9 +6,9 @@ rust-version = "1.68.0"
 authors = ["Sunip K. Mukherjee"]
 license = "MIT OR Apache-2.0"
 readme = "README.MD"
-repository = "https://github.com/sunipkm/generic-camera-asi"
+repository = "https://github.com/sunipkm/generic-camera"
 homepage = "https://crates.io/crates/generic-camera-asi"
-keywords = ["generic-camera", "interface", "api", "zwo", "asi"]
+keywords = ["api", "asi", "generic-camera", "interface", "zwo"]
 build = "build.rs"
 description = """
 An efficient and ergonomic interface to capture images using cameras.
@@ -17,20 +17,21 @@ exclude = [".github"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
-generic-camera = { version = ">= 0.0.10", default-features = false }
-refimage = { version = ">= 1.0.0-pre", default-features = false }
-log = "0.4"
-bytemuck = "1.18"
-atomic-time = "0.1"
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
-[features]
-default = []
+[dependencies]
+atomic-time = "0.1"
+bytemuck = "1.18"
+# generic-camera = { version = ">= 0.0.10", default-features = false }
+generic-camera.workspace = true
+log = "0.4"
+refimage = { version = ">= 1.0.0-pre", default-features = false }
 
 [build-dependencies]
 bindgen = "0.70"
 cc = "1.1"
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+[features]
+default = []
