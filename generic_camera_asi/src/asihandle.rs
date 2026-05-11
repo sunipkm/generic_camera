@@ -16,29 +16,28 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use atomic_time::AtomicOptionInstant;
-use refimage::{BayerPattern, BayerShift, GenericImageRef, EXPOSURE_KEY};
-
 use crate::{
-    zwo_ffi::{
-        ASICloseCamera, ASIGetCameraProperty, ASIGetCameraPropertyByID, ASIGetControlCaps,
-        ASIGetControlValue, ASIGetDataAfterExp, ASIGetExpStatus, ASIGetID,
-        ASIGetNumOfConnectedCameras, ASIGetNumOfControls, ASIGetSerialNumber, ASIInitCamera,
-        ASIOpenCamera, ASISetControlValue, ASISetID, ASIStartExposure, ASIStopExposure,
-        ASI_BAYER_PATTERN_ASI_BAYER_BG, ASI_BAYER_PATTERN_ASI_BAYER_GB,
-        ASI_BAYER_PATTERN_ASI_BAYER_GR, ASI_BAYER_PATTERN_ASI_BAYER_RG, ASI_BOOL_ASI_FALSE,
-        ASI_BOOL_ASI_TRUE, ASI_CAMERA_INFO, ASI_CONTROL_CAPS, ASI_CONTROL_TYPE_ASI_COOLER_ON,
-        ASI_CONTROL_TYPE_ASI_FLIP, ASI_FLIP_STATUS_ASI_FLIP_BOTH, ASI_FLIP_STATUS_ASI_FLIP_HORIZ,
-        ASI_FLIP_STATUS_ASI_FLIP_NONE, ASI_FLIP_STATUS_ASI_FLIP_VERT, ASI_ID, ASI_IMG_TYPE,
-        ASI_IMG_TYPE_ASI_IMG_END, ASI_IMG_TYPE_ASI_IMG_RAW16, ASI_IMG_TYPE_ASI_IMG_RAW8,
-    },
     zwo_ffi_wrapper::{
         get_bins, get_caps, get_control_caps, get_control_value, get_info, get_pixfmt,
         get_split_ctrl, map_control_cap, set_control_value, string_from_char, to_asibool,
         AsiControlType, AsiCtrl, AsiDeviceCtrl, AsiError, AsiExposureStatus, AsiHandle, AsiRoi,
-        AsiSensorCtrl,
+        AsiSensorCtrl, CameraInfo,
     },
     ASICALL,
+};
+use atomic_time::AtomicOptionInstant;
+use refimage::{BayerPattern, BayerShift, GenericImageRef, EXPOSURE_KEY};
+use zwo_asi_sys::{
+    ASICloseCamera, ASIGetCameraProperty, ASIGetCameraPropertyByID, ASIGetControlCaps,
+    ASIGetControlValue, ASIGetDataAfterExp, ASIGetExpStatus, ASIGetID, ASIGetNumOfConnectedCameras,
+    ASIGetNumOfControls, ASIGetSerialNumber, ASIInitCamera, ASIOpenCamera, ASISetControlValue,
+    ASISetID, ASIStartExposure, ASIStopExposure, ASI_BAYER_PATTERN_ASI_BAYER_BG,
+    ASI_BAYER_PATTERN_ASI_BAYER_GB, ASI_BAYER_PATTERN_ASI_BAYER_GR, ASI_BAYER_PATTERN_ASI_BAYER_RG,
+    ASI_BOOL_ASI_FALSE, ASI_BOOL_ASI_TRUE, ASI_CAMERA_INFO, ASI_CONTROL_CAPS,
+    ASI_CONTROL_TYPE_ASI_COOLER_ON, ASI_CONTROL_TYPE_ASI_FLIP, ASI_FLIP_STATUS_ASI_FLIP_BOTH,
+    ASI_FLIP_STATUS_ASI_FLIP_HORIZ, ASI_FLIP_STATUS_ASI_FLIP_NONE, ASI_FLIP_STATUS_ASI_FLIP_VERT,
+    ASI_ID, ASI_IMG_TYPE, ASI_IMG_TYPE_ASI_IMG_END, ASI_IMG_TYPE_ASI_IMG_RAW16,
+    ASI_IMG_TYPE_ASI_IMG_RAW8,
 };
 
 use generic_camera::{
@@ -77,7 +76,7 @@ pub(crate) fn get_asi_devs() -> Result<Vec<GenCamDescriptor>, AsiError> {
             continue;
         }
         let sn = get_sn(dev.CameraID).unwrap_or("Unknown".into());
-        let mut dev: GenCamDescriptor = dev.into();
+        let mut dev: GenCamDescriptor = CameraInfo { raw: dev }.into();
         dev.info.insert("Serial Number".to_string(), sn.into());
         devs.push(dev);
     }
@@ -217,7 +216,7 @@ pub fn open_device(ginfo: &GenCamDescriptor) -> Result<AsiImager, GenCamError> {
         AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
         AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
         AsiError::CameraRemoved(_, _) => GenCamError::CameraRemoved,
-        _ => GenCamError::GeneralError(format!("{:?}", e)),
+        _ => GenCamError::GeneralError(format!("{e:?}")),
     })?;
     let info = get_info(handle)?;
     let caps = get_control_caps(handle)?;
@@ -225,18 +224,18 @@ pub fn open_device(ginfo: &GenCamDescriptor) -> Result<AsiImager, GenCamError> {
     let mut roi = AsiRoi::get(handle).map_err(|e| match e {
         AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
         AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-        _ => GenCamError::GeneralError(format!("{:?}", e)),
+        _ => GenCamError::GeneralError(format!("{e:?}")),
     })?;
     roi.fmt = ASI_IMG_TYPE_ASI_IMG_RAW8;
     roi.set(handle).map_err(|e| match e {
         AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
         AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-        _ => GenCamError::GeneralError(format!("{:?}", e)),
+        _ => GenCamError::GeneralError(format!("{e:?}")),
     })?;
     let roi = AsiRoi::get(handle).map_err(|e| match e {
         AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
         AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-        _ => GenCamError::GeneralError(format!("{:?}", e)),
+        _ => GenCamError::GeneralError(format!("{e:?}")),
     })?;
     let bpp = match roi.fmt {
         ASI_IMG_TYPE_ASI_IMG_RAW8 => GenCamPixelBpp::Bpp8,
@@ -257,7 +256,7 @@ pub fn open_device(ginfo: &GenCamDescriptor) -> Result<AsiImager, GenCamError> {
     let sn = get_sn(handle).map_err(|e| match e {
         AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
         AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-        _ => GenCamError::GeneralError(format!("{:?}", e)),
+        _ => GenCamError::GeneralError(format!("{e:?}")),
     })?;
     let sname = string_from_char(&info.Name);
     let sname_ref = sname.as_bytes();
@@ -495,7 +494,7 @@ impl AsiImager {
         res
     }
 
-    pub fn download_image(&mut self) -> Result<GenericImageRef, GenCamError> {
+    pub fn download_image(&mut self) -> Result<GenericImageRef<'_>, GenCamError> {
         // check if capturing, if not return error
         if !self.capturing.load(Ordering::SeqCst) {
             return Err(GenCamError::ExposureNotStarted);

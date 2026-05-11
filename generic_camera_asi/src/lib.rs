@@ -8,7 +8,7 @@
 //! use generic_camera::{GenCam, GenCamDriver};
 //! use generic_camera_asi::{GenCamAsi, GenCamDriverAsi};
 //! use std::{thread::sleep, time::Duration};
-//!  
+//!
 //! let mut drv = GenCamDriverAsi;
 //! if drv.available_devices() == 0 {
 //!     return;
@@ -24,7 +24,7 @@
 //! ```
 mod asicamera2;
 mod asihandle;
-mod zwo_ffi;
+
 #[macro_use]
 mod zwo_ffi_wrapper;
 
@@ -45,7 +45,7 @@ pub use generic_camera::*;
 macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]
-        #[doc = $content] extern { }
+        #[doc = $content] extern "C" { }
     }
 }
 

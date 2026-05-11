@@ -29,3 +29,53 @@
 #![cfg_attr(doc, allow(warnings))]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+impl Default for ASI_CAMERA_INFO {
+    fn default() -> Self {
+        Self {
+            Name: [0; 64],
+            CameraID: Default::default(),
+            MaxHeight: Default::default(),
+            MaxWidth: Default::default(),
+            IsColorCam: Default::default(),
+            BayerPattern: Default::default(),
+            SupportedBins: Default::default(),
+            SupportedVideoFormat: Default::default(),
+            PixelSize: Default::default(),
+            MechanicalShutter: Default::default(),
+            ST4Port: Default::default(),
+            IsCoolerCam: Default::default(),
+            IsUSB3Host: Default::default(),
+            IsUSB3Camera: Default::default(),
+            ElecPerADU: Default::default(),
+            BitDepth: Default::default(),
+            IsTriggerCam: Default::default(),
+            Unused: Default::default(),
+        }
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for ASI_ID {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+        }
+    }
+}
+
+impl Default for ASI_CONTROL_CAPS {
+    fn default() -> Self {
+        Self {
+            Name: [0; 64],
+            Description: [0; 128],
+            MaxValue: Default::default(),
+            MinValue: Default::default(),
+            DefaultValue: Default::default(),
+            IsAutoSupported: Default::default(),
+            ControlType: Default::default(),
+            IsWritable: Default::default(),
+            Unused: Default::default(),
+        }
+    }
+}

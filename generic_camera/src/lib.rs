@@ -158,13 +158,13 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// This is a blocking call.
     ///
     /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn capture(&mut self) -> GenCamResult<GenericImageRef>;
+    fn capture(&mut self) -> GenCamResult<GenericImageRef<'_>>;
 
     /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
     fn start_exposure(&mut self) -> GenCamResult<()>;
 
     /// Download the image captured in [`GenCam::start_exposure`].
-    fn download_image(&mut self) -> GenCamResult<GenericImageRef>;
+    fn download_image(&mut self) -> GenCamResult<GenericImageRef<'_>>;
 
     /// Get exposure status. This function is useful for checking if a
     /// non-blocking exposure has finished running.
