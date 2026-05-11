@@ -27,7 +27,8 @@ bytemuck = "1.18"
 # generic-camera = { version = ">= 0.0.10", default-features = false }
 generic-camera.workspace = true
 log = "0.4"
-refimage = { version = ">= 1.0.0-pre", default-features = false }
+# refimage = { version = ">= 1.0.0-pre", default-features = false }
+refimage.workspace = true
 
 [build-dependencies]
 bindgen = "0.70"
