@@ -9,9 +9,9 @@ use refimage::GenericImageRef;
 
 use crate::{
     asihandle::{get_asi_devs, open_device, AsiImager},
-    zwo_ffi::ASIGetNumOfConnectedCameras,
     zwo_ffi_wrapper::AsiError,
 };
+use zwo_asi_sys::ASIGetNumOfConnectedCameras;
 
 #[derive(Debug, Default)]
 /// [`GenCamDriver`] implementation for ASI cameras.
@@ -101,7 +101,7 @@ impl GenCam for GenCamAsi {
         self.handle.image_ready()
     }
 
-    fn download_image(&mut self) -> GenCamResult<GenericImageRef> {
+    fn download_image(&mut self) -> GenCamResult<GenericImageRef<'_>> {
         self.handle.download_image()
     }
 
@@ -142,7 +142,7 @@ impl GenCam for GenCamAsi {
         self.handle.is_capturing()
     }
 
-    fn capture(&mut self) -> GenCamResult<GenericImageRef> {
+    fn capture(&mut self) -> GenCamResult<GenericImageRef<'_>> {
         let (exp, _) = self.handle.get_exposure()?;
         self.handle.start_exposure()?;
         std::thread::sleep(exp);

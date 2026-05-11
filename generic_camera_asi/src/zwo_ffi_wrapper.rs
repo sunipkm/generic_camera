@@ -12,7 +12,7 @@ use generic_camera::{
 };
 use log::warn;
 
-use crate::zwo_ffi::*;
+use zwo_asi_sys::*;
 
 #[macro_export]
 /// Generate a closure that wraps an ASI function call that returns
@@ -22,7 +22,7 @@ macro_rules! ASICALL {
         (|| -> Result<(), $crate::zwo_ffi_wrapper::AsiError> {
             #[allow(clippy::macro_metavars_in_unsafe)]
             let res = unsafe { $func($($arg),*) };
-            if res != $crate::zwo_ffi::ASI_ERROR_CODE_ASI_SUCCESS as _ {
+            if res != ::zwo_asi_sys::ASI_ERROR_CODE_ASI_SUCCESS as _ {
                 #[cfg(debug_assertions)]
                 let err = {
                     let args = [$(stringify!($arg)),*];
@@ -42,56 +42,6 @@ macro_rules! ASICALL {
     };
 }
 
-impl Default for ASI_CAMERA_INFO {
-    fn default() -> Self {
-        Self {
-            Name: [0; 64],
-            CameraID: Default::default(),
-            MaxHeight: Default::default(),
-            MaxWidth: Default::default(),
-            IsColorCam: Default::default(),
-            BayerPattern: Default::default(),
-            SupportedBins: Default::default(),
-            SupportedVideoFormat: Default::default(),
-            PixelSize: Default::default(),
-            MechanicalShutter: Default::default(),
-            ST4Port: Default::default(),
-            IsCoolerCam: Default::default(),
-            IsUSB3Host: Default::default(),
-            IsUSB3Camera: Default::default(),
-            ElecPerADU: Default::default(),
-            BitDepth: Default::default(),
-            IsTriggerCam: Default::default(),
-            Unused: Default::default(),
-        }
-    }
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for ASI_ID {
-    fn default() -> Self {
-        Self {
-            id: Default::default(),
-        }
-    }
-}
-
-impl Default for ASI_CONTROL_CAPS {
-    fn default() -> Self {
-        Self {
-            Name: [0; 64],
-            Description: [0; 128],
-            MaxValue: Default::default(),
-            MinValue: Default::default(),
-            DefaultValue: Default::default(),
-            IsAutoSupported: Default::default(),
-            ControlType: Default::default(),
-            IsWritable: Default::default(),
-            Unused: Default::default(),
-        }
-    }
-}
-
 pub(crate) fn string_from_char<const N: usize>(inp: &[raw::c_char; N]) -> String {
     let mut str = String::from_utf8_lossy(&unsafe {
         std::mem::transmute_copy::<[raw::c_char; N], [u8; N]>(inp)
@@ -101,8 +51,13 @@ pub(crate) fn string_from_char<const N: usize>(inp: &[raw::c_char; N]) -> String
     str.trim().to_string()
 }
 
-impl From<ASI_CAMERA_INFO> for GenCamDescriptor {
-    fn from(value: ASI_CAMERA_INFO) -> Self {
+pub struct CameraInfo {
+    pub(crate) raw: ASI_CAMERA_INFO,
+}
+
+impl From<CameraInfo> for GenCamDescriptor {
+    fn from(value: CameraInfo) -> Self {
+        let value = value.raw;
         let name = string_from_char(&value.Name);
         let mut info = HashMap::new();
         info.insert("Camera ID".to_string(), (value.CameraID as i64).into());
@@ -950,16 +905,19 @@ pub(crate) fn get_control_caps(handle: i32) -> Result<Vec<ASI_CONTROL_CAPS>, Gen
     Ok(caps)
 }
 
-impl Display for ASI_CONTROL_CAPS {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} - {} ({} - {}) [{}]",
-            string_from_char(&self.Name),
-            string_from_char(&self.Description),
-            self.MinValue,
-            self.MaxValue,
-            self.ControlType
-        )
-    }
-}
+// pub struct ControlCaps {
+//     pub(crate) raw: ASI_CONTROL_CAPS,
+// }
+// impl Display for ControlCaps {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(
+//             f,
+//             "{} - {} ({} - {}) [{}]",
+//             string_from_char(&self.raw.Name),
+//             string_from_char(&self.raw.Description),
+//             self.raw.MinValue,
+//             self.raw.MaxValue,
+//             self.raw.ControlType
+//         )
+//     }
+// }

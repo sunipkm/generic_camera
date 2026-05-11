@@ -9,7 +9,7 @@ readme = "README.MD"
 repository = "https://github.com/sunipkm/generic-camera"
 homepage = "https://crates.io/crates/generic-camera-asi"
 keywords = ["api", "asi", "generic-camera", "interface", "zwo"]
-build = "build.rs"
+
 description = """
 An efficient and ergonomic interface to capture images using cameras.
 """
@@ -29,10 +29,7 @@ generic-camera.workspace = true
 log = "0.4"
 # refimage = { version = ">= 1.0.0-pre", default-features = false }
 refimage.workspace = true
-
-[build-dependencies]
-bindgen = "0.70"
-cc = "1.1"
+zwo_asi_sys = { path = "../zwo_asi_sys/", version = "0.1" }
 
 [features]
 default = []
