@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["gencam_asi_example", "generic_camera", "generic_camera_asi"]
+members = [
+  "gencam_asi_example",
+  "generic_camera",
+  "generic_camera_asi",
+  "zwo_asi_sys"
+]
 
 [workspace.dependencies]
 generic-camera = { path = "generic_camera", version = "0.0.12", default-features = false }
