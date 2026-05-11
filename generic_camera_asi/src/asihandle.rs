@@ -457,7 +457,7 @@ impl AsiImager {
             match e {
                 AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
                 AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-                _ => GenCamError::GeneralError(format!("{:?}", e)),
+                _ => GenCamError::GeneralError(format!("{e:?}")),
             }
         })?;
         let state = self.handle.state_raw()?;
@@ -488,7 +488,7 @@ impl AsiImager {
         let res = ASICALL!(ASIStopExposure(handle)).map_err(|e| match e {
             AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
             AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-            _ => GenCamError::GeneralError(format!("{:?}", e)),
+            _ => GenCamError::GeneralError(format!("{e:?}")),
         });
         self.capturing.store(false, Ordering::SeqCst);
         res

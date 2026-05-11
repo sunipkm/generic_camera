@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::CStr,
     fmt::{Debug, Display},
     os::raw,
     time::Duration,
@@ -43,12 +44,12 @@ macro_rules! ASICALL {
 }
 
 pub(crate) fn string_from_char<const N: usize>(inp: &[raw::c_char; N]) -> String {
-    let mut str = String::from_utf8_lossy(&unsafe {
-        std::mem::transmute_copy::<[raw::c_char; N], [u8; N]>(inp)
-    })
-    .to_string();
-    str.retain(|c| c != '\0');
-    str.trim().to_string()
+    let inp = bytemuck::cast_slice(inp);
+    let bytes = CStr::from_bytes_until_nul(inp)
+        .map(CStr::to_bytes)
+        // if there's no nul, then interpret it as the whole slice
+        .unwrap_or(inp);
+    String::from_utf8_lossy(bytes.trim_ascii()).into_owned()
 }
 
 pub struct CameraInfo {
