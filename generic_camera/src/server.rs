@@ -1,8 +1,8 @@
-// FIXME: port to new API
 /*!
  * # Generic Camera Server
  * This module contains the implementation of a generic camera server that can manage multiple cameras.
  */
+ // FIXME: port to new API
 use rand::{thread_rng, Rng};
 use refimage::GenericImageOwned;
 use std::collections::HashMap;

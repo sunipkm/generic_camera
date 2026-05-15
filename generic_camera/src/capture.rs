@@ -31,7 +31,7 @@ impl<'cam, C: GenCam + ?Sized> Capturing<'cam, C> {
 
     /// Capture an image, blocking the current thread until either the capture completes,
     /// an error is returned, or a panic happens. If `self` is finished and already
-    /// yielded a result once, returns an `AccessViolation` error.
+    /// yielded a result once, returns an [`AccessViolation`] error.
     ///
     /// If a panic happens, the panic is propagated and the capture will still be cancelled.
     pub fn capture(mut self) -> GenCamResult<GenericImageRef<'cam>> {
@@ -97,7 +97,13 @@ impl<'cam, C: GenCam + ?Sized> Capturing<'cam, C> {
                 // We need to write out these ones manually because of the almighty Polonius
                 // the crab.
                 PollExposure::Wait(dur) => Some(PollExposure::Wait(dur)),
-                PollExposure::Soon => Some(PollExposure::Soon),
+                PollExposure::Soon => {
+                    #[cfg(all(feature = "loom", not(doctest)))]
+                    {
+                        loom::thread::yield_now();
+                    }
+                    Some(PollExposure::Soon)
+                }
             },
         };
         // Now we can put the guard back
@@ -138,10 +144,8 @@ pub trait Capture: GenCam {
 impl<C: GenCam + ?Sized> Capture for C {}
 
 /// High-level extension trait for capturing frames asynchronously from a [`GenCam`].
-/// This trait is needed to ensure that an asynchronous capture can be performed with type
-/// erasure.
 pub trait CaptureAsync<S: Sleep>: Capture {
-    /// Starts a capture and then returns a future that blocks
+    /// Starts a capture, blocking until it starts and then returns a future that blocks
     /// the current task until either the capture completes, an error is
     /// returned, or a panic happens. Before the future is returned, the
     /// current thread may be blocked waiting for the device to not be busy,
@@ -175,5 +179,113 @@ pub trait Sleep {
 impl<T: Sleep + ?Sized> Sleep for Arc<T> {
     fn sleep(&self, duration: Duration) -> impl Future<Output = ()> + Send + Sync + 'static {
         (**self).sleep(duration)
+    }
+}
+
+/// An implementation of [`Sleep`] for the tokio runtime
+#[cfg(any(feature = "tokio"))]
+pub struct TokioSleep;
+
+#[cfg(feature = "tokio")]
+impl Sleep for TokioSleep {
+    fn sleep(&self, duration: Duration) -> impl Future<Output = ()> + Send + Sync + 'static {
+        tokio::time::sleep(duration)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use rand::{Rng, thread_rng};
+
+    use crate::{
+        AnyGenCam, Capture, GenCamCtrl, GenCamDriver, GenCamState, dummy::GenCamDriverDummy,
+    };
+    #[cfg(feature = "loom")]
+    use loom::{sync, thread};
+    #[cfg(not(feature = "loom"))]
+    use std::{sync, thread};
+    fn make_dummy() -> AnyGenCam {
+        let mut dummy = GenCamDriverDummy {};
+        let mut cam = dummy.connect_first_device().unwrap();
+        let time = if cfg!(feature = "loom") {
+            Duration::from_micros(0)
+        } else {
+            Duration::from_millis(100).into()
+        };
+        cam.set_property(
+            GenCamCtrl::Exposure(crate::controls::ExposureCtrl::ExposureTime),
+            &time.into(),
+        )
+        .unwrap();
+        cam
+    }
+    #[cfg(not(feature = "loom"))]
+    fn model(x: impl Fn() + Send + Sync + 'static) {
+        x()
+    }
+    #[cfg(feature = "loom")]
+    fn model(x: impl Fn() + Send + Sync + 'static) {
+        unsafe {
+            // we have some spinloops that no matter what we do, loom will
+            // hate us
+            std::env::set_var("LOOM_MAX_PREEMPTIONS", "3");
+        }
+        loom::model(x)
+    }
+    #[test]
+    fn dummy_cancel_err() {
+        model(|| {
+            let cam = make_dummy();
+            assert_eq!(
+                cam.cancel_capture(),
+                Err(crate::GenCamError::ExposureNotStarted)
+            );
+        })
+    }
+    #[test]
+    fn dummy_starts_idle() {
+        model(|| {
+            let cam = make_dummy();
+            assert_eq!(cam.camera_state().unwrap(), GenCamState::Idle);
+        })
+    }
+    #[test]
+    fn dummy_capture_finishes() {
+        model(|| {
+            let mut cam = make_dummy();
+            _ = cam.capture().unwrap();
+            assert_eq!(cam.camera_state().unwrap(), GenCamState::ExposureFinished);
+        })
+    }
+    #[test]
+    fn cancel_on_drop() {
+        model(|| {
+            let mut cam = make_dummy();
+            let guard = cam.capture_guard().unwrap();
+            drop(guard);
+            assert!(!cam.is_capturing());
+        });
+    }
+    #[test]
+    fn dummy_start_exposure_twice_err() {
+        model(|| {
+            let mut cam = make_dummy();
+            _ = cam.start_exposure().unwrap();
+            assert_eq!(
+                cam.start_exposure(),
+                Err(crate::GenCamError::ExposureInProgress)
+            );
+        })
+    }
+    #[test]
+    fn dummy_start_exposure_guard_err() {
+        model(|| {
+            let mut cam = make_dummy();
+            _ = cam.start_exposure();
+            let mut guard = cam.capture_guard();
+            assert!(guard.is_err());
+        })
     }
 }

@@ -1,8 +1,8 @@
 [package]
 name = "generic-camera"
 version = "0.0.12"  # change in readme.md
-edition = "2021"
-rust-version = "1.68.0"
+edition = "2024"
+rust-version = "1.95.0"
 authors = ["Sunip K. Mukherjee", "Lily Grippo"]
 license = "MIT OR Apache-2.0"
 keywords = ["api", "camera", "interface"]
@@ -24,18 +24,25 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 documented = "0.6"
+loom.workspace = true
+loom.optional = true
 rand = { version = "0.8", optional = true }
 refimage.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
+tokio = { version = "1.38.2", default-features = false, features = ["time"], optional = true }
 
 [dev-dependencies]
 rand = "0.8"
 serde_json = "1.0"
+tokio = { version = "1", features = ["time"] }
 
 [features]
 # default features
 default = []
 dummy = ["dep:rand"]
 full = ["dummy", "server"]
+# Internal concurrency testing
+loom = ["dep:loom"]
 server = ["dep:rand"]
+tokio = ["dep:tokio"]

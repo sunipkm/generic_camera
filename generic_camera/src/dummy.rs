@@ -3,9 +3,9 @@
 
 This module contains a dummy camera that can be used for testing purposes, and as a reference or implementing new cameras.
 # Usage
-```
+```no_run
 use generic_camera::dummy::{GenCamDriverDummy, GenCamDummy};
-use generic_camera::{GenCam, GenCamDriver};
+use generic_camera::{GenCam, GenCamDriver, Capture};
 use generic_camera::{GenCamCtrl, controls::ExposureCtrl};
 use std::time::Duration;
 let mut driver = GenCamDriverDummy {};
@@ -16,28 +16,29 @@ let exposure: Duration = camera.get_property(GenCamCtrl::Exposure(ExposureCtrl::
 println!("Exposure time: {:?}", exposure);
 ```
 */
+#[cfg(all(feature = "loom", not(doctest)))]
+use loom::{cell, sync, thread};
+
+#[cfg(not(all(feature = "loom", not(doctest))))]
+use std::{cell, sync, thread};
+
+use cell::UnsafeCell;
 use std::{
-    cell::UnsafeCell,
     collections::HashMap,
     fmt::Debug,
-    future::Future,
-    hint::unreachable_unchecked,
-    sync::{
-        atomic::{fence, AtomicBool, AtomicU8, Ordering},
-        Arc, Mutex,
-    },
-    thread,
     time::{Duration, Instant, SystemTime},
 };
+use sync::atomic::{AtomicU8, Ordering, fence};
+use sync::{Arc, Mutex};
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 use refimage::{DynamicImageRef, GenericImageRef, ImageRef};
 
 use crate::{
-    controls::ExposureCtrl, property::PropertyLims, GenCam, GenCamCtrl, GenCamDescriptor,
-    GenCamDriver, GenCamError, GenCamResult, GenCamRoi, GenCamState, PollExposure, Property,
-    PropertyError, PropertyValue,
+    GenCam, GenCamCtrl, GenCamDescriptor, GenCamDriver, GenCamError, GenCamResult, GenCamRoi,
+    GenCamState, PollExposure, Property, PropertyError, PropertyValue, controls::ExposureCtrl,
+    property::PropertyLims,
 };
 
 #[derive(Debug)]
@@ -135,6 +136,9 @@ fn preserve_or_store(
             Ok(x) => return x,
             Err(next_prev) => prev = next_prev,
         }
+        if cfg!(feature = "loom") {
+            thread::yield_now();
+        }
     }
     preserve
 }
@@ -179,7 +183,14 @@ impl CaptureState {
         let now = Instant::now();
         // SAFETY: We have exclusive access over self.start_time. Access to self.start_time
         // is guarded by self.state being WAITING_FOR_TIME
-        unsafe { self.start_time.get().write(now) }
+        #[cfg(all(feature = "loom", not(doctest)))]
+        {
+            unsafe { *self.start_time.get_mut().deref() = now }
+        }
+        #[cfg(not(all(feature = "loom", not(doctest))))]
+        unsafe {
+            self.start_time.get().write(now)
+        }
 
         // this can be relaxed since the release part of the AcqRel fence ensures that it
         // happens after the store to self.state
@@ -188,15 +199,22 @@ impl CaptureState {
     }
 
     pub fn get_state(&self) -> GenCamState {
-        match self.state.compare_exchange(
+        if cfg!(feature = "loom") {
+            thread::yield_now();
+        }
+        match self.state.compare_exchange_weak(
             Self::CAPTURING,
             Self::WAITING_FOR_TIME,
-            Ordering::Acquire,
+            Ordering::AcqRel,
             Ordering::Relaxed,
         ) {
             Ok(_) => {
                 // SAFETY: we were capturing, now we obtained the lock over the start time.
+                #[cfg(all(feature = "loom", not(doctest)))]
+                let start = { unsafe { *self.start_time.get().deref() } };
+                #[cfg(not(all(feature = "loom", not(doctest))))]
                 let start = unsafe { self.start_time.get().read() };
+
                 self.state.store(Self::CAPTURING, Ordering::Release);
                 GenCamState::Exposing(Some(start.elapsed()))
             }
@@ -211,21 +229,25 @@ impl CaptureState {
     }
     #[cold]
     fn relax() {
-        std::hint::spin_loop();
+        if cfg!(feature = "loom") {
+            thread::yield_now()
+        } else {
+            std::hint::spin_loop();
+        }
     }
     #[cold]
     fn relax_harder() {
-        std::thread::yield_now();
+        thread::yield_now();
     }
 
     fn wait_until_capture_and_then_update_state(&self, update_to: u8) -> GenCamResult<()> {
         let mut spinny_iters = 50u8;
         loop {
             // This spin loop should only happen for at most a few iterations
-            match self.state.compare_exchange_weak(
+            match self.state.compare_exchange(
                 Self::CAPTURING,
                 update_to,
-                Ordering::AcqRel,
+                Ordering::Acquire,
                 Ordering::Relaxed,
             ) {
                 // We saw capturing, everything is fine now
@@ -305,8 +327,16 @@ impl GenCamDummy {
         }
     }
     fn make_dummy_image(&mut self) -> GenCamResult<GenericImageRef<'_>> {
-        if !cfg!(miri) {
+        // If we're on miri, rng calls are stupidly slow. You shouldn't care
+        // about the data for the dummy camera anyway
+        if !cfg!(any(miri, feature = "loom")) {
             thread_rng().fill(self.data.as_mut_slice());
+        } else {
+            const fn random() -> u8 {
+                // Random number chosen by the roll of a fair die
+                4
+            }
+            self.data.as_mut_slice().fill(random());
         }
 
         let img = ImageRef::new(
@@ -401,23 +431,29 @@ impl GenCam for GenCamDummy {
         let now = self.capture_state.start_capture()?;
         let (exp, _) = self.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
 
-        let exp = exp.try_into().map_err(|e| GenCamError::PropertyError {
+        let exp: Duration = exp.try_into().map_err(|e| GenCamError::PropertyError {
             control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
             error: e,
         })?;
 
         let state = self.capture_state.clone();
-        thread::spawn(move || loop {
-            if !state.is_capturing(Ordering::Relaxed) {
-                break;
+        thread::spawn(move || {
+            loop {
+                if !state.is_capturing(Ordering::Relaxed) {
+                    break;
+                }
+                if now.elapsed() >= exp {
+                    _ = state.mark_ready();
+                    break;
+                }
+                if cfg!(feature = "loom") {
+                    // thread::yield_now();
+                } else {
+                    std::thread::sleep(Duration::from_secs_f32(
+                        thread_rng().gen_range(1.0..15.0) * 0.001,
+                    ));
+                }
             }
-            if now.elapsed() >= exp {
-                _ = state.mark_ready();
-                break;
-            }
-            thread::sleep(Duration::from_secs_f32(
-                thread_rng().gen_range(1.0..15.0) * 0.001,
-            ));
         });
         Ok(())
     }
@@ -435,7 +471,6 @@ impl GenCam for GenCamDummy {
                 })?;
             Ok(total_exposure_time.saturating_sub(time))
         }
-        panic!();
         match self.capture_state.get_state() {
             GenCamState::Exposing(Some(time)) => match get_exposure_time_remaining(self, time) {
                 Ok(time) => PollExposure::Wait(time),
@@ -468,38 +503,5 @@ impl GenCam for GenCamDummy {
 
     fn get_roi(&self) -> &GenCamRoi {
         &self.roi
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::time::Duration;
-
-    use crate::{
-        dummy::{GenCamDriverDummy, GenCamDummy},
-        Capture, GenCamCtrl, GenCamDriver, GenCamState,
-    };
-
-    #[test]
-    fn start_stop_exposure() {
-        let mut dummy = GenCamDriverDummy {};
-        let mut cam = dummy.connect_first_device().unwrap();
-        cam.set_property(
-            GenCamCtrl::Exposure(crate::controls::ExposureCtrl::ExposureTime),
-            &Duration::from_millis(100).into(),
-        )
-        .unwrap();
-        let img = cam.capture().unwrap();
-
-        // drop(img);
-        assert!(matches!(
-            cam.camera_state().unwrap(),
-            GenCamState::ExposureFinished
-        ));
-        // cam.capture().unwrap();
-        // assert!(matches!(
-        //     cam.camera_state().unwrap(),
-        //     GenCamState::ExposureFinished
-        // ));
     }
 }

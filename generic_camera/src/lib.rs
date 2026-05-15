@@ -21,7 +21,6 @@ pub use refimage::GenericImage;
 use refimage::GenericImageRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
 use std::hash::Hash;
 use std::{fmt::Display, time::Duration};
 use thiserror::Error;
@@ -34,6 +33,8 @@ pub use capture::*;
 #[cfg_attr(docsrs, doc(cfg(feature = "dummy")))]
 pub mod dummy;
 pub mod property;
+
+#[cfg(false)]
 #[cfg(feature = "server")]
 #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 pub mod server;
@@ -65,7 +66,7 @@ impl Display for GenCamRoi {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 /// Defines the state of the camera.
 pub enum GenCamState {
     /// Camera is idle.
