@@ -2,8 +2,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use generic_camera::{
-    AnyGenCamInfo, GenCam, GenCamCtrl, GenCamDescriptor, GenCamDriver, GenCamError, GenCamResult,
-    GenCamRoi, GenCamState, Property, PropertyValue,
+    AnyGenCamInfo, GenCam, GenCamCtrl, GenCamDescriptor, GenCamDriver, GenCamError, GenCamResult, GenCamRoi, GenCamState, PollExposure, Property, PropertyValue
 };
 use refimage::GenericImageRef;
 
@@ -125,13 +124,11 @@ impl GenCam for GenCamAsi {
         &self.caps
     }
 
-    fn set_property(
-        &mut self,
-        name: GenCamCtrl,
-        value: &PropertyValue,
-        auto: bool,
-    ) -> GenCamResult<()> {
-        self.handle.set_property(&name, value, auto)
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
+        self.handle.set_property(&name, value, true)
+    }
+    fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
+        self.handle.set_property(&name, value, false)
     }
 
     fn cancel_capture(&self) -> GenCamResult<()> {
@@ -141,7 +138,13 @@ impl GenCam for GenCamAsi {
     fn is_capturing(&self) -> bool {
         self.handle.is_capturing()
     }
-
+    fn poll_exposure(&mut self) -> generic_camera::PollExposure<'_> {
+        let exp = match self.handle.get_exposure() {
+            Ok((exp, _)) => exp,
+            Err(e) => return PollExposure::Ready(Err(e))
+        };
+        self.handle.
+    }
     fn capture(&mut self) -> GenCamResult<GenericImageRef<'_>> {
         let (exp, _) = self.handle.get_exposure()?;
         self.handle.start_exposure()?;

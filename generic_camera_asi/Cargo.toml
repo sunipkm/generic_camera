@@ -22,7 +22,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-atomic-time = "0.1"
+atomic-time.workspace = true
 bytemuck = "1.18"
 # generic-camera = { version = ">= 0.0.10", default-features = false }
 generic-camera.workspace = true

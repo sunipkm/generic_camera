@@ -8,5 +8,6 @@ members = [
 ]
 
 [workspace.dependencies]
+atomic-time = "0.1"
 generic-camera = { path = "generic_camera", version = "0.0.12", default-features = false }
 refimage = { version = "1.0.0-pre4", default-features = false }

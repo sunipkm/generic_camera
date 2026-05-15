@@ -125,7 +125,6 @@ fn main() {
                     cam.set_property(
                         SensorCtrl::PixelFormat.into(),
                         &GenCamPixelBpp::Bpp16.into(),
-                        false,
                     )
                     .expect("Error setting pixel format");
                 }
@@ -137,7 +136,6 @@ fn main() {
             .set_property(
                 GenCamCtrl::Device(DeviceCtrl::CoolerTemp),
                 &PropertyValue::Int(cfg.target_temp as i64),
-                false,
             )
             .is_err()
         {
@@ -204,7 +202,6 @@ fn main() {
         cam.set_property(
             GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
             &(Duration::from_millis(100).into()),
-            false,
         )
         .expect("Error setting exposure time");
         // gain settings
@@ -220,24 +217,24 @@ fn main() {
         }
         if let Some(gain) = cfg.gain {
             println!("Setting gain to {:.1} dB", gain);
-            cam.set_property(AnalogCtrl::Gain.into(), &gain.into(), false)
+            cam.set_property(AnalogCtrl::Gain.into(), &gain.into())
                 .expect("Error setting gain");
         } else {
             // set optimal gain for the cameras we use
             if info.name.contains("533") {
-                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &10.0f64.into(), false) {
+                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &10.0f64.into()) {
                     println!("Error setting camera gain: {e:#?}");
                 } else {
                     println!("Setting {} gain to 10 dB", &info.name);
                 }
             } else if info.name.contains("432") {
-                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &14.0f64.into(), false) {
+                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &14.0f64.into()) {
                     println!("Error setting camera gain: {e:#?}");
                 } else {
                     println!("Setting {} gain to 14 dB", &info.name);
                 }
             } else if info.name.contains("585") {
-                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &25.2f64.into(), false) {
+                if let Err(e) = cam.set_property(AnalogCtrl::Gain.into(), &25.2f64.into()) {
                     println!("Error setting camera gain: {e:#?}");
                 } else {
                     println!("Setting {} gain to 25.2 dB", &info.name);
@@ -247,12 +244,8 @@ fn main() {
         // change to 8 bit?
         if cfg.pix8b {
             println!("Setting pixel format to 8-bit");
-            cam.set_property(
-                SensorCtrl::PixelFormat.into(),
-                &GenCamPixelBpp::Bpp8.into(),
-                false,
-            )
-            .expect("Error setting pixel format");
+            cam.set_property(SensorCtrl::PixelFormat.into(), &GenCamPixelBpp::Bpp8.into())
+                .expect("Error setting pixel format");
         }
 
         let props = cam.list_properties();
@@ -438,7 +431,6 @@ fn main() {
                     cam.set_property(
                         GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
                         &opt_exp.into(),
-                        false,
                     )
                     .expect("Error setting exposure time");
                 }

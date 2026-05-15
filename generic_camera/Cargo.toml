@@ -3,7 +3,7 @@ name = "generic-camera"
 version = "0.0.12"  # change in readme.md
 edition = "2021"
 rust-version = "1.68.0"
-authors = ["Sunip K. Mukherjee"]
+authors = ["Sunip K. Mukherjee", "Lily Grippo"]
 license = "MIT OR Apache-2.0"
 keywords = ["api", "camera", "interface"]
 readme = "README.MD"
@@ -25,7 +25,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 documented = "0.6"
 rand = { version = "0.8", optional = true }
-refimage = { version = ">=1.0.0-pre", default-features = false }
+refimage.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 
