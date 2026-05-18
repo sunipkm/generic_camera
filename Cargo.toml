@@ -1,12 +1,14 @@
 [workspace]
-resolver = "3"
+resolver = "2"
 members = [
   "gencam_asi_example",
   "generic_camera",
-  "generic_camera_asi",
+  # "generic_camera_asi",
   "zwo_asi_sys"
 ]
 
 [workspace.dependencies]
+atomic-time = "0.1"
 generic-camera = { path = "generic_camera", version = "0.0.12", default-features = false }
+loom = "0.7.2"
 refimage = { version = "1.0.0-pre4", default-features = false }

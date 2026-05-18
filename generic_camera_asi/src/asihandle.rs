@@ -189,7 +189,22 @@ pub struct GenCamInfoAsi {
     pub(crate) info: Arc<GenCamDescriptor>,
     pub(crate) ctrl: Arc<AsiDeviceCtrl>,
 }
-
+impl GenCamInfoAsi {
+    fn set_property_impl(
+        &mut self,
+        name: GenCamCtrl,
+        value: &PropertyValue,
+        auto: bool,
+    ) -> GenCamResult<()> {
+        if !self.ctrl.contains(&name) {
+            return Err(GenCamError::PropertyError {
+                control: name,
+                error: PropertyError::NotFound,
+            });
+        };
+        self.ctrl.set_value(&self.handle, &name, value, auto)
+    }
+}
 impl std::fmt::Debug for GenCamInfoAsi {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("GenCamInfoAsi")
@@ -457,7 +472,7 @@ impl AsiImager {
             match e {
                 AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
                 AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-                _ => GenCamError::GeneralError(format!("{:?}", e)),
+                _ => GenCamError::GeneralError(format!("{e:?}")),
             }
         })?;
         let state = self.handle.state_raw()?;
@@ -488,7 +503,7 @@ impl AsiImager {
         let res = ASICALL!(ASIStopExposure(handle)).map_err(|e| match e {
             AsiError::CameraClosed(_, _) => GenCamError::CameraClosed,
             AsiError::InvalidId(_, _) => GenCamError::InvalidId(handle),
-            _ => GenCamError::GeneralError(format!("{:?}", e)),
+            _ => GenCamError::GeneralError(format!("{e:?}")),
         });
         self.capturing.store(false, Ordering::SeqCst);
         res
@@ -1049,18 +1064,10 @@ impl GenCamInfo for GenCamInfoAsi {
         self.ctrl.get_value(&self.handle, &name)
     }
 
-    fn set_property(
-        &mut self,
-        name: GenCamCtrl,
-        value: &PropertyValue,
-        auto: bool,
-    ) -> GenCamResult<()> {
-        if !self.ctrl.contains(&name) {
-            return Err(GenCamError::PropertyError {
-                control: name,
-                error: PropertyError::NotFound,
-            });
-        };
-        self.ctrl.set_value(&self.handle, &name, value, auto)
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
+        self.set_property_impl(name, value, false)
+    }
+    fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
+        self.set_property_impl(name, value, true)
     }
 }

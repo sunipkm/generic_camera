@@ -3,9 +3,9 @@
 
 This module contains a dummy camera that can be used for testing purposes, and as a reference or implementing new cameras.
 # Usage
-```
+```no_run
 use generic_camera::dummy::{GenCamDriverDummy, GenCamDummy};
-use generic_camera::{GenCam, GenCamDriver};
+use generic_camera::{GenCam, GenCamDriver, Capture};
 use generic_camera::{GenCamCtrl, controls::ExposureCtrl};
 use std::time::Duration;
 let mut driver = GenCamDriverDummy {};
@@ -16,28 +16,29 @@ let exposure: Duration = camera.get_property(GenCamCtrl::Exposure(ExposureCtrl::
 println!("Exposure time: {:?}", exposure);
 ```
 */
+#[cfg(all(feature = "loom", not(doctest)))]
+use loom::{cell, sync, thread};
+
+#[cfg(not(all(feature = "loom", not(doctest))))]
+use std::{cell, sync, thread};
+
+use cell::UnsafeCell;
 use std::{
-    cell::RefCell,
     collections::HashMap,
-    sync::{
-        atomic::{
-            AtomicBool,
-            Ordering::{Relaxed, SeqCst},
-        },
-        Arc,
-    },
-    thread,
+    fmt::Debug,
     time::{Duration, Instant, SystemTime},
 };
+use sync::atomic::{AtomicU8, Ordering, fence};
+use sync::{Arc, Mutex};
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 use refimage::{DynamicImageRef, GenericImageRef, ImageRef};
 
 use crate::{
-    controls::ExposureCtrl, property::PropertyLims, GenCam, GenCamCtrl, GenCamDescriptor,
-    GenCamDriver, GenCamError, GenCamResult, GenCamRoi, GenCamState, Property, PropertyError,
-    PropertyValue,
+    GenCam, GenCamCtrl, GenCamDescriptor, GenCamDriver, GenCamError, GenCamResult, GenCamRoi,
+    GenCamState, PollExposure, Property, PropertyError, PropertyValue, controls::ExposureCtrl,
+    property::PropertyLims,
 };
 
 #[derive(Debug)]
@@ -85,8 +86,8 @@ impl GenCamDriver for GenCamDriverDummy {
             name: descriptor.name.clone(),
             vendor: descriptor.vendor.clone(),
             caps,
-            vals: RefCell::new(vals),
-            capturing: Arc::new(AtomicBool::new(false)),
+            vals: Mutex::new(vals),
+            // capturing: Arc::new(AtomicBool::new(false)),
             roi: GenCamRoi {
                 x_min: 0,
                 y_min: 0,
@@ -94,8 +95,8 @@ impl GenCamDriver for GenCamDriverDummy {
                 height: 1080,
             },
             data: vec![0; 1920 * 1080 * 3],
-            imgready: Arc::new(AtomicBool::new(false)),
-            start: RefCell::new(None),
+            // imgready: Arc::new(AtomicBool::new(false)),
+            capture_state: Arc::new(CaptureState::new()), // start: AtomicOptionInstant::none(),
         }))
     }
 
@@ -108,6 +109,183 @@ impl GenCamDriver for GenCamDriverDummy {
     }
 }
 
+/// The capture state for the dummy camera
+struct CaptureState {
+    state: AtomicU8,
+    start_time: UnsafeCell<Instant>,
+}
+unsafe impl Send for CaptureState {}
+unsafe impl Sync for CaptureState {}
+impl Debug for CaptureState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CaptureState")
+            .field("state", &self.state)
+            .finish()
+    }
+}
+fn preserve_or_store(
+    x: &AtomicU8,
+    preserve: u8,
+    store: u8,
+    success: Ordering,
+    failure: Ordering,
+) -> u8 {
+    let mut prev = x.load(failure);
+    while prev != preserve {
+        match x.compare_exchange_weak(prev, store, success, failure) {
+            Ok(x) => return x,
+            Err(next_prev) => prev = next_prev,
+        }
+        if cfg!(feature = "loom") {
+            thread::yield_now();
+        }
+    }
+    preserve
+}
+impl CaptureState {
+    /// The camera is idle
+    const IDLE: u8 = 0;
+    /// Someone has access to or is updating the starting time.
+    /// This then needs to transition to capturing
+    const WAITING_FOR_TIME: u8 = 1;
+    /// We are capturing
+    const CAPTURING: u8 = 2;
+    /// We have finished a capture
+    const READY: u8 = 3;
+
+    pub fn new() -> Self {
+        Self {
+            state: AtomicU8::new(Self::IDLE),
+            start_time: UnsafeCell::new(Instant::now()),
+        }
+    }
+    fn is_state_capturing(x: u8) -> bool {
+        [Self::WAITING_FOR_TIME, Self::CAPTURING].contains(&x)
+    }
+    pub fn is_capturing(&self, order: Ordering) -> bool {
+        Self::is_state_capturing(self.state.load(order))
+    }
+    pub fn start_capture(&self) -> GenCamResult<Instant> {
+        let old = preserve_or_store(
+            &self.state,
+            Self::CAPTURING,
+            Self::WAITING_FOR_TIME,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
+        if Self::is_state_capturing(old) {
+            // If we are already capturing, nothing needs to change and there's no ordering needed.
+            return Err(GenCamError::ExposureInProgress);
+        }
+        // If the state change did not result in an error, we want the change to
+        // happen before all of these stores,
+        fence(Ordering::AcqRel);
+        let now = Instant::now();
+        // SAFETY: We have exclusive access over self.start_time. Access to self.start_time
+        // is guarded by self.state being WAITING_FOR_TIME
+        #[cfg(all(feature = "loom", not(doctest)))]
+        {
+            unsafe { *self.start_time.get_mut().deref() = now }
+        }
+        #[cfg(not(all(feature = "loom", not(doctest))))]
+        unsafe {
+            self.start_time.get().write(now)
+        }
+
+        // this can be relaxed since the release part of the AcqRel fence ensures that it
+        // happens after the store to self.state
+        self.state.store(Self::CAPTURING, Ordering::Relaxed);
+        Ok(now)
+    }
+
+    pub fn get_state(&self) -> GenCamState {
+        if cfg!(feature = "loom") {
+            thread::yield_now();
+        }
+        match self.state.compare_exchange_weak(
+            Self::CAPTURING,
+            Self::WAITING_FOR_TIME,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => {
+                // SAFETY: we were capturing, now we obtained the lock over the start time.
+                #[cfg(all(feature = "loom", not(doctest)))]
+                let start = { unsafe { *self.start_time.get().deref() } };
+                #[cfg(not(all(feature = "loom", not(doctest))))]
+                let start = unsafe { self.start_time.get().read() };
+
+                self.state.store(Self::CAPTURING, Ordering::Release);
+                GenCamState::Exposing(Some(start.elapsed()))
+            }
+            // Someone else is updating or reading the start time,
+            // just spuriously indicate that the exposing time is unknown.
+            // We don't want to spin loop.
+            Err(Self::WAITING_FOR_TIME) => GenCamState::Exposing(None),
+            Err(Self::IDLE) => GenCamState::Idle,
+            Err(Self::READY) => GenCamState::ExposureFinished,
+            _ => GenCamState::Unknown,
+        }
+    }
+    #[cold]
+    fn relax() {
+        if cfg!(feature = "loom") {
+            thread::yield_now()
+        } else {
+            std::hint::spin_loop();
+        }
+    }
+    #[cold]
+    fn relax_harder() {
+        thread::yield_now();
+    }
+
+    fn wait_until_capture_and_then_update_state(&self, update_to: u8) -> GenCamResult<()> {
+        let mut spinny_iters = 50u8;
+        loop {
+            // This spin loop should only happen for at most a few iterations
+            match self.state.compare_exchange(
+                Self::CAPTURING,
+                update_to,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                // We saw capturing, everything is fine now
+                Ok(_) => break Ok(()),
+                // It is very very unlikely to get here.
+                //
+                // If we got here, it's almost certain that this is
+                // from another thread starting initialization.
+                // If we don't immediately yield to the scheduler,
+                // it is possible we could end up with priority inversion
+                // on some platforms since `Instant::now()` calls into the kernel
+                // and could make the calling thread yield the time slice.
+                Err(Self::WAITING_FOR_TIME | Self::CAPTURING) if spinny_iters == 0 => {
+                    Self::relax_harder()
+                }
+
+                // Someone is getting or setting the start time.
+                // It is very unlikely to even get here.
+                // We need to wait to see whether we actually can cancel.
+                //
+                // For the first tiny amount of iterations, we simply just spin loop
+                // to filter out the times we get here from someone acquiring the lock
+                // for reading
+                Err(Self::WAITING_FOR_TIME | Self::CAPTURING) => Self::relax(),
+                // we saw something that is not a capturing state, even briefly, cancellation fails.
+                Err(_) => break Err(GenCamError::ExposureNotStarted),
+            }
+            spinny_iters = spinny_iters.saturating_sub(1);
+        }
+    }
+    pub fn cancel_capture(&self) -> GenCamResult<()> {
+        self.wait_until_capture_and_then_update_state(Self::IDLE)
+    }
+    pub fn mark_ready(&self) -> GenCamResult<()> {
+        self.wait_until_capture_and_then_update_state(Self::READY)
+    }
+}
+
 #[derive(Debug)]
 /// A dummy camera for testing purposes.
 pub struct GenCamDummy {
@@ -115,12 +293,74 @@ pub struct GenCamDummy {
     name: String,
     vendor: String,
     caps: HashMap<GenCamCtrl, Property>,
-    vals: RefCell<HashMap<GenCamCtrl, (PropertyValue, bool)>>,
-    capturing: Arc<AtomicBool>,
-    imgready: Arc<AtomicBool>,
+    vals: Mutex<HashMap<GenCamCtrl, (PropertyValue, bool)>>,
+    capture_state: Arc<CaptureState>,
+    // capturing: Arc<AtomicBool>,
+    // imgready: Arc<AtomicBool>,
     roi: GenCamRoi,
     data: Vec<u8>,
-    start: RefCell<Option<Instant>>,
+}
+
+impl GenCamDummy {
+    fn set_property_impl(
+        &mut self,
+        name: crate::GenCamCtrl,
+        value: &crate::PropertyValue,
+        auto: bool,
+    ) -> GenCamResult<()> {
+        if self.capture_state.is_capturing(Ordering::Relaxed) {
+            return Err(GenCamError::ExposureInProgress);
+        }
+        let mut guard = self
+            .vals
+            .try_lock()
+            .map_err(|_| GenCamError::AccessViolation)?;
+        match guard.get_mut(&name) {
+            Some(val) => {
+                *val = (value.clone(), auto);
+                Ok(())
+            }
+            None => Err(GenCamError::PropertyError {
+                control: name,
+                error: PropertyError::NotFound,
+            }),
+        }
+    }
+    fn make_dummy_image(&mut self) -> GenCamResult<GenericImageRef<'_>> {
+        // If we're on miri, rng calls are stupidly slow. You shouldn't care
+        // about the data for the dummy camera anyway
+        if !cfg!(any(miri, feature = "loom")) {
+            thread_rng().fill(self.data.as_mut_slice());
+        } else {
+            const fn random() -> u8 {
+                // Random number chosen by the roll of a fair die
+                4
+            }
+            self.data.as_mut_slice().fill(random());
+        }
+
+        let img = ImageRef::new(
+            &mut self.data,
+            self.roi.width as _,
+            self.roi.height as _,
+            refimage::ColorSpace::Rgb,
+        )
+        .map_err(|e| GenCamError::InvalidImageType(e.to_string()))?;
+        let img = DynamicImageRef::from(img);
+        let mut img = GenericImageRef::new(
+            if cfg!(miri) {
+                SystemTime::UNIX_EPOCH
+            } else {
+                SystemTime::now()
+            },
+            img,
+        );
+        img.insert_key("XOFST", self.roi.x_min as u32)
+            .map_err(|e| GenCamError::InvalidImageType(format!("Error inserting key: {e}")))?;
+        img.insert_key("YOFST", self.roi.y_min as u32)
+            .map_err(|e| GenCamError::InvalidImageType(format!("Error inserting key: {e}")))?;
+        Ok(img)
+    }
 }
 
 impl GenCam for GenCamDummy {
@@ -149,7 +389,12 @@ impl GenCam for GenCamDummy {
     }
 
     fn get_property(&self, name: crate::GenCamCtrl) -> GenCamResult<(crate::PropertyValue, bool)> {
-        match self.vals.borrow().get(&name) {
+        // deadlock me not
+        let guard = self
+            .vals
+            .try_lock()
+            .map_err(|_| GenCamError::AccessViolation)?;
+        match guard.get(&name) {
             Some(val) => Ok(val.clone()),
             None => Err(GenCamError::PropertyError {
                 control: name,
@@ -162,147 +407,86 @@ impl GenCam for GenCamDummy {
         &mut self,
         name: crate::GenCamCtrl,
         value: &crate::PropertyValue,
-        auto: bool,
     ) -> GenCamResult<()> {
-        if self.capturing.load(SeqCst) {
-            return Err(GenCamError::ExposureInProgress);
-        }
-        match self.vals.borrow_mut().get_mut(&name) {
-            Some(val) => {
-                *val = (value.clone(), auto);
-                Ok(())
-            }
-            None => Err(GenCamError::PropertyError {
-                control: name,
-                error: PropertyError::NotFound,
-            }),
-        }
+        self.set_property_impl(name, value, false)
+    }
+
+    fn set_property_auto(
+        &mut self,
+        name: crate::GenCamCtrl,
+        value: &crate::PropertyValue,
+    ) -> GenCamResult<()> {
+        self.set_property_impl(name, value, true)
     }
 
     fn cancel_capture(&self) -> GenCamResult<()> {
-        self.capturing.store(false, SeqCst);
-        Ok(())
+        self.capture_state.cancel_capture()
     }
 
     fn is_capturing(&self) -> bool {
-        self.capturing.load(SeqCst)
-    }
-
-    fn capture(&mut self) -> GenCamResult<GenericImageRef> {
-        if self.imgready.load(Relaxed) {
-            self.imgready.store(false, Relaxed);
-            self.capturing.store(false, SeqCst);
-            self.start.borrow_mut().take();
-        }
-        if self.capturing.load(SeqCst) {
-            return Err(GenCamError::ExposureInProgress);
-        }
-        let now = Instant::now();
-        let (exp, _) = self.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
-        let exp = exp.try_into().map_err(|e| GenCamError::PropertyError {
-            control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
-            error: e,
-        })?;
-        self.start.borrow_mut().replace(now);
-        self.capturing.store(true, SeqCst);
-        self.imgready.store(false, Relaxed);
-        loop {
-            if !self.capturing.load(Relaxed) {
-                break;
-            }
-            if now.elapsed() >= exp {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        self.imgready.store(true, Relaxed);
-        self.download_image()
+        self.capture_state.is_capturing(Ordering::Relaxed)
     }
 
     fn start_exposure(&mut self) -> GenCamResult<()> {
-        if self.imgready.load(Relaxed) {
-            self.imgready.store(false, Relaxed);
-            self.capturing.store(false, SeqCst);
-            self.start.borrow_mut().take();
-        }
-        if self.capturing.load(SeqCst) {
-            return Err(GenCamError::ExposureInProgress);
-        }
-        let now = Instant::now();
+        let now = self.capture_state.start_capture()?;
         let (exp, _) = self.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
-        let exp = exp.try_into().map_err(|e| GenCamError::PropertyError {
+
+        let exp: Duration = exp.try_into().map_err(|e| GenCamError::PropertyError {
             control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
             error: e,
         })?;
-        self.start.borrow_mut().replace(now);
-        self.capturing.store(true, SeqCst);
-        self.imgready.store(false, Relaxed);
-        let capturing = self.capturing.clone();
-        let imgready = self.imgready.clone();
+
+        let state = self.capture_state.clone();
         thread::spawn(move || {
             loop {
-                if !capturing.load(SeqCst) {
+                if !state.is_capturing(Ordering::Relaxed) {
                     break;
                 }
                 if now.elapsed() >= exp {
+                    _ = state.mark_ready();
                     break;
                 }
-                thread::sleep(Duration::from_millis(10));
+                if cfg!(feature = "loom") {
+                    // thread::yield_now();
+                } else {
+                    std::thread::sleep(Duration::from_secs_f32(
+                        thread_rng().gen_range(1.0..15.0) * 0.001,
+                    ));
+                }
             }
-            imgready.store(true, Relaxed);
         });
         Ok(())
     }
+    fn poll_exposure(&mut self) -> PollExposure<'_> {
+        fn get_exposure_time_remaining(
+            this: &mut GenCamDummy,
+            time: Duration,
+        ) -> GenCamResult<Duration> {
+            let (exp, _) = this.get_property(GenCamCtrl::Exposure(ExposureCtrl::ExposureTime))?;
 
-    fn download_image(&mut self) -> GenCamResult<GenericImageRef> {
-        let state = self.camera_state()?;
-        match state {
-            GenCamState::Exposing(_) => Err(GenCamError::ExposureInProgress),
-            GenCamState::Idle => Err(GenCamError::ExposureNotStarted),
-            GenCamState::ExposureFinished => {
-                thread_rng().fill(self.data.as_mut_slice());
-                self.imgready.store(false, Relaxed);
-                self.capturing.store(false, SeqCst);
-                let img = ImageRef::new(
-                    &mut self.data,
-                    self.roi.width as _,
-                    self.roi.height as _,
-                    refimage::ColorSpace::Rgb,
-                )
-                .map_err(|e| GenCamError::InvalidImageType(e.to_string()))?;
-                let img = DynamicImageRef::from(img);
-                let mut img = GenericImageRef::new(SystemTime::now(), img);
-                img.insert_key("XOFST", self.roi.x_min as u32)
-                    .map_err(|e| {
-                        GenCamError::InvalidImageType(format!("Error inserting key: {}", e))
-                    })?;
-                img.insert_key("YOFST", self.roi.y_min as u32)
-                    .map_err(|e| {
-                        GenCamError::InvalidImageType(format!("Error inserting key: {}", e))
-                    })?;
-                Ok(img)
-            }
-            GenCamState::Downloading(_) => Err(GenCamError::InvalidSequence),
-            GenCamState::Errored(gen_cam_error) => Err(gen_cam_error),
-            GenCamState::Unknown => Err(GenCamError::InvalidSequence),
+            let total_exposure_time: Duration =
+                exp.try_into().map_err(|e| GenCamError::PropertyError {
+                    control: GenCamCtrl::Exposure(ExposureCtrl::ExposureTime),
+                    error: e,
+                })?;
+            Ok(total_exposure_time.saturating_sub(time))
+        }
+        match self.capture_state.get_state() {
+            GenCamState::Exposing(Some(time)) => match get_exposure_time_remaining(self, time) {
+                Ok(time) => PollExposure::Wait(time),
+                Err(e) => PollExposure::Ready(Err(e)),
+            },
+            GenCamState::Exposing(None) => PollExposure::Soon,
+            GenCamState::ExposureFinished => match self.make_dummy_image() {
+                Ok(img) => PollExposure::Ready(Ok(img)),
+                Err(e) => PollExposure::Ready(Err(e)),
+            },
+            _ => PollExposure::Ready(Err(GenCamError::ExposureNotStarted)),
         }
     }
 
-    fn image_ready(&self) -> GenCamResult<bool> {
-        Ok(self.imgready.load(Relaxed))
-    }
-
     fn camera_state(&self) -> GenCamResult<GenCamState> {
-        let capturing = self.capturing.load(SeqCst);
-        let imgready = self.imgready.load(Relaxed);
-        let state = if capturing && imgready {
-            GenCamState::ExposureFinished
-        } else if capturing {
-            GenCamState::Exposing(Some(self.start.borrow().unwrap().elapsed()))
-        } else {
-            GenCamState::Idle
-        };
-        Ok(state)
+        Ok(self.capture_state.get_state())
     }
 
     fn set_roi(&mut self, roi: &GenCamRoi) -> GenCamResult<&GenCamRoi> {

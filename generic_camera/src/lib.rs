@@ -26,12 +26,15 @@ use std::{fmt::Display, time::Duration};
 use thiserror::Error;
 
 pub use crate::property::{Property, PropertyError, PropertyType, PropertyValue};
-
+mod capture;
 pub mod controls;
-#[cfg(feature = "dummy")]
+pub use capture::*;
+#[cfg(any(feature = "dummy", test))]
 #[cfg_attr(docsrs, doc(cfg(feature = "dummy")))]
 pub mod dummy;
 pub mod property;
+
+#[cfg(false)]
 #[cfg(feature = "server")]
 #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 pub mod server;
@@ -63,7 +66,7 @@ impl Display for GenCamRoi {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 /// Defines the state of the camera.
 pub enum GenCamState {
     /// Camera is idle.
@@ -115,6 +118,18 @@ pub struct GenCamDescriptor {
     pub info: HashMap<String, PropertyValue>,
 }
 
+/// The result of polling the exposure status
+#[derive(Debug)]
+pub enum PollExposure<'frame> {
+    /// The capture is ready, either with a captured image or an error
+    Ready(GenCamResult<GenericImageRef<'frame>>),
+    /// The user should wait some amount of time before trying again.
+    /// This is a hint used to be able to put the task to sleep
+    Wait(Duration),
+    /// The capture (or a wait time) should be available extremely shortly, indicating that the user should
+    /// try polling again immediately.
+    Soon,
+}
 /// Trait for controlling the camera. This trait is intended to be applied to a
 /// non-clonable object that is used to capture images and can not be shared across
 /// threads.
@@ -141,34 +156,36 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(
-        &mut self,
-        name: GenCamCtrl,
-        value: &PropertyValue,
-        auto: bool,
-    ) -> GenCamResult<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
+    /// Set a property to a value that the device is allowed to choose automatically.
+    ///
+    /// Depending on implementation, `value` may act as a "hint" or an "initial value" of some kind,
+    /// or if the device does not support automatically setting the given property, `value` is used as a
+    /// fallback.
+    fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 
     /// Cancel an ongoing exposure.
+    ///
+    /// This is a low-level API and generally should not be used directly if possible.
     fn cancel_capture(&self) -> GenCamResult<()>;
 
     /// Check if the camera is currently capturing an image.
     fn is_capturing(&self) -> bool;
 
-    /// Capture an image.
-    /// This is a blocking call.
+    /// Start a non-blocking exposure and return. This function does NOT block waiting for the exposure to complete,
+    /// but may not return immediately (e.g. if the camera is busy).
     ///
-    /// Raises a `Message` with the message `"Not implemented"` if unimplemented.
-    fn capture(&mut self) -> GenCamResult<GenericImageRef<'_>>;
-
-    /// Start an exposure and return. This function does NOT block, but may not return immediately (e.g. if the camera is busy).
+    /// This function should generally not be called directly; the high-level `capture` and `capture_async`
+    /// functions should be used instead to ensure proper cancellation.
     fn start_exposure(&mut self) -> GenCamResult<()>;
 
-    /// Download the image captured in [`GenCam::start_exposure`].
-    fn download_image(&mut self) -> GenCamResult<GenericImageRef<'_>>;
-
-    /// Get exposure status. This function is useful for checking if a
-    /// non-blocking exposure has finished running.
-    fn image_ready(&self) -> GenCamResult<bool>;
+    /// Polls the status of the active non-blocking exposure,
+    /// returning [`PollExposure::Ready`] if the capture is ready
+    /// with either a captured frame or error.
+    ///
+    /// If the capture is not ready this gives a hint of how much time should be waited
+    /// until the exposure is actually ready
+    fn poll_exposure(&mut self) -> PollExposure<'_>;
 
     /// Get the camera state.
     fn camera_state(&self) -> GenCamResult<GenCamState>;
@@ -220,12 +237,13 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     fn get_property(&self, name: GenCamCtrl) -> GenCamResult<(PropertyValue, bool)>;
 
     /// Set a property by name.
-    fn set_property(
-        &mut self,
-        name: GenCamCtrl,
-        value: &PropertyValue,
-        auto: bool,
-    ) -> GenCamResult<()>;
+    fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
+    /// Set a property to a value that the device is allowed to choose automatically.
+    ///
+    /// Depending on implementation, `value` may act as a "hint" or an "initial value" of some kind,
+    /// or if the device does not support automatically setting the given property, `value` is used as a
+    /// fallback.
+    fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]

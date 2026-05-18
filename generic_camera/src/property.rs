@@ -54,9 +54,9 @@ impl Property {
     /// Validate a property value
     pub fn validate(&self, value: &PropertyValue) -> PropertyResult<()> {
         // 1. Check if value in enum
-        match self.prop {
-            PropertyLims::EnumStr { ref variants, .. } => {
-                if let PropertyValue::EnumStr(ref val) = value {
+        match &self.prop {
+            PropertyLims::EnumStr { variants, .. } => {
+                if let PropertyValue::EnumStr(val) = value {
                     if variants.contains(val) {
                         return Ok(());
                     } else {
@@ -69,8 +69,8 @@ impl Property {
                     });
                 }
             }
-            PropertyLims::EnumInt { ref variants, .. } => {
-                if let PropertyValue::Int(ref val) = value {
+            PropertyLims::EnumInt { variants, .. } => {
+                if let PropertyValue::Int(val) = value {
                     if variants.contains(val) {
                         return Ok(());
                     } else {
@@ -83,8 +83,8 @@ impl Property {
                     });
                 }
             }
-            PropertyLims::EnumUnsigned { ref variants, .. } => {
-                if let PropertyValue::Unsigned(ref val) = value {
+            PropertyLims::EnumUnsigned { variants, .. } => {
+                if let PropertyValue::Unsigned(val) = value {
                     if variants.contains(val) {
                         return Ok(());
                     } else {
