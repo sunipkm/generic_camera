@@ -195,15 +195,16 @@ impl Sleep for TokioSleep {
 
 #[cfg(test)]
 mod test {
+    #![expect(unused_imports, reason = "I'll fix later")]
     use std::time::Duration;
-
-    use rand::{Rng, thread_rng};
 
     use crate::{
         AnyGenCam, Capture, GenCamCtrl, GenCamDriver, GenCamState, dummy::GenCamDriverDummy,
     };
+
     #[cfg(feature = "loom")]
     use loom::{sync, thread};
+
     #[cfg(not(feature = "loom"))]
     use std::{sync, thread};
     fn make_dummy() -> AnyGenCam {
@@ -284,7 +285,7 @@ mod test {
         model(|| {
             let mut cam = make_dummy();
             _ = cam.start_exposure();
-            let mut guard = cam.capture_guard();
+            let guard = cam.capture_guard();
             assert!(guard.is_err());
         })
     }

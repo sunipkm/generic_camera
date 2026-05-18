@@ -1,4 +1,4 @@
 [toolchain]
-channel = "nightly-2026-05-14"  # only use nightly so we can get miri
+channel = "nightly-2026-05-16"  # only use nightly so we can get miri
 profile = "minimal"
 components = ["cargo", "miri", "clippy"]

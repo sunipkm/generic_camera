@@ -2,7 +2,7 @@
 name = "generic-camera"
 version = "0.0.12"  # change in readme.md
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.94.0"
 authors = ["Sunip K. Mukherjee", "Lily Grippo"]
 license = "MIT OR Apache-2.0"
 keywords = ["api", "camera", "interface"]
