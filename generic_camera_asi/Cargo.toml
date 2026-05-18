@@ -1,8 +1,8 @@
 [package]
 name = "generic-camera-asi"
 version = "0.0.11"
-edition = "2021"
-rust-version = "1.68.0"
+edition = "2024"
+rust-version = "1.94.0"
 authors = ["Sunip K. Mukherjee"]
 license = "MIT OR Apache-2.0"
 readme = "README.MD"
