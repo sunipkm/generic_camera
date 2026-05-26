@@ -1,0 +1,4 @@
+[package]
+name = "player_one_camera_sys"
+version = "0.1.0"
+edition = "2024"

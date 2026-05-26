@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "gencam_asi_example",
-  "generic_camera",
+  "generic_camera", "generic_camera_player_one", "player_one_camera_sys",
   # "generic_camera_asi",
   "zwo_asi_sys"
 ]

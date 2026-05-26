@@ -1,0 +1,9 @@
+[package]
+name = "generic_camera_player_one"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+error_set = "0.9.1"
+generic-camera = { version = "0.0.12", path = "../generic_camera" }
+player_one_camera_sys = { version = "0.1.0", path = "../player_one_camera_sys" }
