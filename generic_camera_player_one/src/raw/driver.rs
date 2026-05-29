@@ -1,16 +1,16 @@
 use generic_camera::{GenCamDescriptor, PropertyValue};
-use player_one_camera_sys::{self as poa, CameraProperties};
+use player_one_camera_sys::{self as poa, BayerPattern, CameraProperties};
 use std::{collections::HashMap, ffi::c_int, marker::PhantomData, rc::Rc, sync::Arc};
 
 use crate::util::poa_call;
 
-struct NotSync(PhantomData<Rc<()>>);
+struct NotSendSync(PhantomData<*const ()>);
 /// A proxy for driver-global state
 pub struct Driver {
     // We can be sent across threads, but we don't have synchronized access.
     // If the constructor's invariants are upheld, then we can be sent across threads
     // without any problem, but we just don't have synchronized access
-    _not_sync: NotSync,
+    _not_sync: NotSendSync,
 }
 impl Driver {
     /// Creates a new [`Driver`] proxy
@@ -20,18 +20,24 @@ impl Driver {
     ///
     /// - [`Driver`] methods are not called concurrently from multiple threads, even by different
     ///   [`Driver`] instances
-    /// - If there are multiple active instances of the [`Driver`], you must ensure that the same
-    ///   camera isn't opened or closed twice
-    /// - You must ensure that none of these methods are called concurrently with any write to camera
-    ///   state of cameras that come from this driver
-    /// - All of the other conditions of global state apply
+    ///
+    /// - If you obtain multiple owned handles to a camera with the same ID, even across different [`Driver`] instances,
+    ///   you must not perform *ANY* operation on the camera without synchronization including `Drop`ping the camera.
+    ///
+    /// - You must ensure that none of the [`Driver`] methods are called concurrently with any write to
+    ///   the custom user ID of any camera (don't ask why)
+    ///
+    /// - All of the typical conditions of global state apply
+    ///
+    /// Essentially, you must uphold the soundness conditions of the `Send` implementation for the [`GenCam`]
+    /// since there is no way to ensure uniqueness at the driver level.
     ///
     /// The intended usage pattern ensures all of these conditions automatically. You should basically
     /// only ever have a single [`Driver`] instance per program or at the very least only create a
-    /// new [`Driver`] after all cameras closed.
+    /// new [`Driver`] after all cameras closed. You should generally not need to
     pub unsafe fn new() -> Self {
         Driver {
-            _not_sync: NotSync(PhantomData),
+            _not_sync: NotSendSync(PhantomData),
         }
     }
     /// Gets the number of available devices.
@@ -52,7 +58,17 @@ impl Driver {
     ///
     /// # Custom properties
     /// - `Serial Number` (`EnumString`) => The serial number of the camera
-    /// - `Max Width`/`Max Height` (`Unsigned`) => The max width / height of the ROI in pixels
+    /// - `Sensor Model Name` (`EnumString`) => The sensor model name
+    /// - `Local Path` (`EnumString`) => The path of the camera in the computer host
+    /// - `Sensor Width`/`Sensor Height` (`Unsigned`) => The sensor width/height
+    /// - `Color Sensor` (`Bool`) => Whether the camera is a color camera
+    /// - `Pixel Size` (`Float`) => The pixel size in um
+    /// - `ST4 Port` (`Bool`) => Whether the camera has an ST4 port
+    /// - `Cooler` (`Bool`) => Whether the camera has a cooler assembly
+    /// - `Bit Depth` (`Unsigned`) => The bit depth of the sensor
+    /// - `USB3 Speed` (`Bool`) => Whether the camera is connected via a USB-3.0 speed connection
+    /// - `Hardware Bin` (`Bool`) => Whether the camera supports hardware binning
+    /// - `Bayer Pattern` (`EnumString`) => (If is a color camera) The Bayer pattern
     pub fn list_devices(&self) -> impl Iterator<Item = GenCamDescriptor> + use<'_> {
         self.list_raw().map(|props| GenCamDescriptor {
             id: props.camera_id.id() as usize,
@@ -61,15 +77,8 @@ impl Driver {
             info: make_info(&props),
         })
     }
-    /// Returns an iterator over all of the cameras currently available
-    ///
-    /// # Safety
-    /// - This function must not be called from multiple threads concurrently even from different driver
-    ///   objects since it accesses global state
-    /// - This function must not be called concurrently with functions that write to any camera's state
-    pub fn get_raw_cameras(
-        &self,
-    ) -> impl Iterator<Item = Result<CameraProperties, poa::Error>> + '_ {
+    /// Returns an iterator over all of properties od currently available cameras
+    fn get_raw_cameras(&self) -> impl Iterator<Item = Result<CameraProperties, poa::Error>> + '_ {
         let num_cams = unsafe { poa::get_camera_count() };
         // SAFETY:
         (0..num_cams).map(|cam_idx| unsafe { poa_call!(poa::get_camera_properties(cam_idx) @ out) })
@@ -77,19 +86,47 @@ impl Driver {
 }
 
 fn make_info(props: &CameraProperties) -> HashMap<String, PropertyValue> {
-    HashMap::from_iter([
-        (
-            "Serial Number".to_owned(),
-            props.serial.to_str_lossy().into_owned().into(),
-        ),
-        (
-            "Max Width".to_owned(),
-            (props.max_width as i64 as u64).into(),
-        ),
-        (
-            "Max Height".to_owned(),
-            (props.max_height as i64 as u64).into(),
-        ),
-        (),
-    ])
+    let mut data = HashMap::from_iter(
+        [
+            (
+                "Serial Number",
+                props.serial.to_str_lossy().into_owned().into(),
+            ),
+            (
+                "Sensor Name",
+                props.sensor_model_name.to_str_lossy().into_owned().into(),
+            ),
+            (
+                "Local Path",
+                props.local_path.to_str_lossy().into_owned().into(),
+            ),
+            ("Sensor Width", (props.max_width as i64 as u64).into()),
+            ("Sensor Height", (props.max_height as i64 as u64).into()),
+            ("Color Sensor", props.is_color_camera.into_bool().into()),
+            ("ST4 Port", props.has_st4_port.into_bool().into()),
+            ("Pixel Size", props.pixel_size.into()),
+            ("Cooler", props.has_cooler.into_bool().into()),
+            ("Bit Depth", (props.bit_depth as u64).into()),
+            ("USB3 Speed", props.is_usb3_speed.into_bool().into()),
+            (
+                "Hardware Bin",
+                props.harware_bin_supported.into_bool().into(),
+            ),
+        ]
+        .map(|(k, v)| (k.to_owned(), v)),
+    );
+    if props.is_color_camera.into_bool()
+        && let Ok(bayer) = props.bayer_pattern.get()
+    {
+        let string = match bayer {
+            BayerPattern::Bg => "BG",
+            BayerPattern::Gr => "GR",
+            BayerPattern::Gb => "GB",
+            BayerPattern::Rg => "RG",
+            // I don't think this should happen, but just in case...
+            BayerPattern::Mono => "NONE",
+        };
+        data.insert("Bayer Pattern".to_owned(), string.to_owned().into());
+    }
+    data
 }

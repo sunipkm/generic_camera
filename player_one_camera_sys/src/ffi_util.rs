@@ -242,6 +242,7 @@ macro_rules! c_enum {
         impl TryFrom<std::ffi::c_int> for $name {
             type Error = $crate::ffi_util::ValidationError<Self>;
             fn try_from(x: std::ffi::c_int) -> ::std::result::Result<Self, Self::Error> {
+                #![allow(deprecated)]
                 #![allow(non_upper_case_globals)]
             $(
                 const $variant: std::ffi::c_int = $name::$variant as _;

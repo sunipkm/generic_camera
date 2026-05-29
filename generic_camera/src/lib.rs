@@ -165,8 +165,6 @@ pub trait GenCam: Send + std::fmt::Debug {
     fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 
     /// Cancel an ongoing exposure.
-    ///
-    /// This is a low-level API and generally should not be used directly if possible.
     fn cancel_capture(&self) -> GenCamResult<()>;
 
     /// Check if the camera is currently capturing an image.

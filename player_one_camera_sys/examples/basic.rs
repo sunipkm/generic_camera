@@ -72,13 +72,13 @@ fn main() -> Result<(), Error> {
                         println!("   Max Dims: {}x{}", prop.max_width, prop.max_height);
                         println!(" Pixel Size: {}μm", prop.pixel_size);
                         println!("  Bit Depth: {}", prop.bit_depth);
-                        println!("   Is Color: {}", prop.is_color_camera.as_bool());
+                        println!("   Is Color: {}", prop.is_color_camera.into_bool());
                         println!("  Bayer Pat: {:?}", prop.bayer_pattern);
                         println!("Out Formats: {:?}", prop.formats);
-                        println!(" Has Cooler: {}", prop.has_cooler.as_bool());
-                        println!("  STP4 Port: {}", prop.has_st4_port.as_bool());
-                        println!(" USB3 Speed: {}", prop.is_usb3_speed.as_bool());
-                        println!("   Hard Bin: {}", prop.harware_bin_supported.as_bool());
+                        println!(" Has Cooler: {}", prop.has_cooler.into_bool());
+                        println!("  STP4 Port: {}", prop.has_st4_port.into_bool());
+                        println!(" USB3 Speed: {}", prop.is_usb3_speed.into_bool());
+                        println!("   Hard Bin: {}", prop.harware_bin_supported.into_bool());
 
                         println!(
                             "  Bin Modes: {:?}",
@@ -136,11 +136,14 @@ fn main() -> Result<(), Error> {
             println!();
             println!("       Name: {}", attrs.name);
             println!("Description: {}", attrs.description);
-            println!("   Writable: {}", attrs.writable.as_bool());
-            println!("   Readable: {}", attrs.readable.as_bool());
+            println!("   Writable: {}", attrs.writable.into_bool());
+            println!("   Readable: {}", attrs.readable.into_bool());
             match attrs.value_type.get() {
                 Ok(ConfigValueKind::Bool) => {
-                    println!("    Default: {}", attrs.default_value.bool_value.as_bool())
+                    println!(
+                        "    Default: {}",
+                        attrs.default_value.bool_value.into_bool()
+                    )
                 }
                 Ok(ConfigValueKind::Float) => {
                     println!(
@@ -228,7 +231,7 @@ fn main() -> Result<(), Error> {
     start_x += 20;
     start_y += 10;
 
-    println!("New ROI: ({start_x} {start_y}) {width}x{height}");
+    println!("New ROI: ({start_x}, {start_y}) {width}x{height}");
     unsafe {
         match poa::set_roi_size(cam_id, width, height).into_result() {
             Ok(()) => {}
@@ -288,7 +291,7 @@ fn main() -> Result<(), Error> {
                     poa::is_image_ready(cam_id, &mut ready).into_result(),
                     "Failed to poll readiness of the image: {e}",
                 );
-                if ready.assume_init().as_bool() {
+                if ready.assume_init().into_bool() {
                     break;
                 }
             };

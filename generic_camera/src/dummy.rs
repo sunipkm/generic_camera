@@ -202,7 +202,7 @@ impl CaptureState {
         if cfg!(feature = "loom") {
             thread::yield_now();
         }
-        match self.state.compare_exchange_weak(
+        match self.state.compare_exchange(
             Self::CAPTURING,
             Self::WAITING_FOR_TIME,
             Ordering::AcqRel,
@@ -328,15 +328,19 @@ impl GenCamDummy {
     }
     fn make_dummy_image(&mut self) -> GenCamResult<GenericImageRef<'_>> {
         // If we're on miri, rng calls are stupidly slow. You shouldn't care
-        // about the data for the dummy camera anyway
-        if !cfg!(any(miri, feature = "loom")) {
-            thread_rng().fill(self.data.as_mut_slice());
-        } else {
-            const fn random() -> u8 {
-                // Random number chosen by the roll of a fair die
+        // about the data for the dummy camera anyway. If we're using loom,
+        // we need to remove the rng call no matter what since loom requires
+        // determinism.
+        if cfg!(any(miri, feature = "loom")) {
+            /// RFC 1149.5 specifies 4 as the standard IEEE-vetted random number.
+            const fn xkcd_221() -> u8 {
+                // Chosen by fair dice roll.
+                // Guaranteed to be random.
                 4
             }
-            self.data.as_mut_slice().fill(random());
+            self.data.as_mut_slice().fill(xkcd_221());
+        } else {
+            thread_rng().fill(self.data.as_mut_slice());
         }
 
         let img = ImageRef::new(
@@ -349,6 +353,7 @@ impl GenCamDummy {
         let img = DynamicImageRef::from(img);
         let mut img = GenericImageRef::new(
             if cfg!(miri) {
+                // miri doesn't support getting system time
                 SystemTime::UNIX_EPOCH
             } else {
                 SystemTime::now()

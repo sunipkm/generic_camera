@@ -56,7 +56,7 @@ impl Bool {
         if b { Bool::True } else { Bool::False }
     }
     #[inline(always)]
-    pub const fn as_bool(self) -> bool {
+    pub const fn into_bool(self) -> bool {
         matches!(self, Self::True)
     }
 }
@@ -67,7 +67,7 @@ impl From<bool> for Bool {
 }
 impl From<Bool> for bool {
     fn from(value: Bool) -> Self {
-        value.as_bool()
+        value.into_bool()
     }
 }
 
@@ -108,8 +108,7 @@ c_enum! {
 }
 
 impl ImageFormat {
-    /// Computes the buffer size for a given pixel format, returning `0` this
-    /// [`ImageFormat`] is `End`
+    /// Computes the buffer size for a given pixel format
     pub const fn buffer_size(self, width: u32, height: u32) -> usize {
         let m = match self {
             Self::Raw8 => 1,
@@ -410,6 +409,7 @@ c_enum! {
         /// Turn cooler (and fan) on or off, read/write, `Bool`
         Cooler,
         /// (Deprecated) State of the lens heater, read-only, `Bool`
+        #[deprecated]
         Heater,
         /// Lens heater power percentage, `0..=100`, read/write, `Int`
         HeaterPower,
@@ -444,6 +444,7 @@ c_enum! {
 impl ConfigParameter {
     /// The type of value associated with this variable
     pub const fn value_type(self) -> ConfigValueKind {
+        #![allow(deprecated)]
         use ConfigParameter::*;
         match self {
             ExposureMicros
@@ -470,6 +471,7 @@ impl ConfigParameter {
     }
     /// Whether this variable is writable (when the config supports writing)
     pub const fn writable(self) -> bool {
+        #![allow(deprecated)]
         use ConfigParameter::*;
         match self {
             ExposureMicros
@@ -690,7 +692,6 @@ unsafe extern "C" {
     ///
     /// # Safety
     /// - You must not call this function from multiple threads concurrently with any read or write of data relating to this camera
-    /// - The camera must not be already opened
     #[link_name = "POAOpenCamera"]
     #[doc(alias = "POAOpenCamera")]
     pub unsafe fn open_camera(id: Id<Camera>) -> PoaResult;
@@ -706,7 +707,6 @@ unsafe extern "C" {
     ///
     /// # Safety
     /// - You must not call this function from multiple threads concurrently with any read or write of data relating to this camera
-    /// - You must not call this function on a camera that's already initialized
     #[link_name = "POAInitCamera"]
     #[doc(alias = "POAInitCamera")]
     pub unsafe fn init_camera(id: Id<Camera>) -> PoaResult;
@@ -720,7 +720,7 @@ unsafe extern "C" {
     /// # Safety
     /// - You must not call this function from multiple threads concurrently with any read or write of data relating to this camera
     /// - You must ensure that the camera denoted by `id` is open
-    /// - All properties of the camera and all resources derived from the camera are invaldidated
+    /// - All properties of the camera and all resources derived from the camera are invalididated
     /// after this call. The camera id considered no longer valid.
     #[link_name = "POACloseCamera"]
     #[doc(alias = "POACloseCamera")]
@@ -891,8 +891,8 @@ unsafe extern "C" {
     /// # Safety
     /// - You must not call this function from multiple threads concurrently with any read or write of data relating to this camera
     /// - The camera must be initialized if it is open
-    #[link_name = "POASetImageStartPos"]
-    #[doc(alias = "POASetImageStartPos")]
+    #[link_name = "POASetImageSize"]
+    #[doc(alias = "POASetImageSize")]
     pub unsafe fn set_roi_size(id: Id<Camera>, width: c_int, height: c_int) -> PoaResult;
 
     /// Gets the pixel bin method index for the camera, writing the result to `out` on success

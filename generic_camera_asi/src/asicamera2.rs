@@ -125,10 +125,10 @@ impl GenCam for GenCamAsi {
     }
 
     fn set_property(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
-        self.handle.set_property(&name, value, true)
+        self.handle.set_property(&name, value, false)
     }
     fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()> {
-        self.handle.set_property(&name, value, false)
+        self.handle.set_property(&name, value, true)
     }
 
     fn cancel_capture(&self) -> GenCamResult<()> {

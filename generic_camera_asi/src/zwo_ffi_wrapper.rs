@@ -7,9 +7,9 @@ use std::{
 };
 
 use generic_camera::{
-    controls::AnalogCtrl, controls::DeviceCtrl, controls::ExposureCtrl, controls::SensorCtrl,
-    property::PropertyLims, property::PropertyType, GenCamCtrl, GenCamDescriptor, GenCamError,
-    GenCamPixelBpp, GenCamRoi, Property, PropertyError, PropertyValue,
+    GenCamCtrl, GenCamDescriptor, GenCamError, GenCamPixelBpp, GenCamRoi, Property, PropertyError,
+    PropertyValue, controls::AnalogCtrl, controls::DeviceCtrl, controls::ExposureCtrl,
+    controls::SensorCtrl, property::PropertyLims, property::PropertyType,
 };
 use log::warn;
 
@@ -525,7 +525,7 @@ impl AsiDeviceCtrl {
                         expected: PropertyType::Int,
                         received: value.get_type(),
                     },
-                })
+                });
             }
         };
         set_control_value(handle.handle(), *ctrl, value, to_asibool(auto))

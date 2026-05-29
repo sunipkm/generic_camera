@@ -125,8 +125,14 @@ impl<'cam, C: GenCam + ?Sized> Drop for Capturing<'cam, C> {
 /// This trait does not include sugar for an async capturing. See [`CaptureAsync`] for that.
 pub trait Capture: GenCam {
     /// Creates a guard that can be used to progress a frame capture and cancel the capture on `Drop`.
+    /// If the guard is dropped after completion, it will not stop the capture, even on continous capture
+    /// cameras.
     fn capture_guard(&mut self) -> GenCamResult<Capturing<'_, Self>> {
-        self.start_exposure()?;
+        match self.start_exposure() {
+            // If we're already exposing, we still want to be able to progress the capture
+            Ok(()) | Err(GenCamError::ExposureInProgress) => {}
+            Err(e) => return Err(e),
+        }
         Ok(Capturing::new(self))
     }
 

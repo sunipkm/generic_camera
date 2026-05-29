@@ -2,56 +2,43 @@ use std::ffi::c_long;
 
 use player_one_camera_sys::{self as poa, CameraProperties, ConfigValue, ConfigValueKind};
 
-use crate::raw::error::PropertyError;
-
-pub unsafe trait PropertyVal: Sized + Copy {
-    unsafe fn from_value(kind: ConfigValueKind, value: ConfigValue) -> Result<Self, PropertyError>;
-    unsafe fn to_value(self) -> (ConfigValueKind, ConfigValue);
+pub unsafe trait ConfigVal: Sized + Copy {
+    const KIND: ConfigValueKind;
+    unsafe fn from_value(value: ConfigValue) -> Self;
+    fn to_value(self) -> ConfigValue;
 }
 
-unsafe impl PropertyVal for c_long {
-    unsafe fn from_value(kind: ConfigValueKind, value: ConfigValue) -> Result<Self, PropertyError> {
-        if kind != ConfigValueKind::Int {
-            return Err(PropertyError::WrongType);
-        }
-        // SAFETY: Caller must uphold the active member being indicated by `kind`
-        // (We don't just use an enum because we wanted ABI compatibility)
-        unsafe { Ok(value.int_value) }
+unsafe impl ConfigVal for c_long {
+    const KIND: ConfigValueKind = ConfigValueKind::Int;
+    unsafe fn from_value(value: ConfigValue) -> Self {
+        // SAFETY: Caller must uphold the active member being `int_value`
+        unsafe { value.int_value }
     }
-    unsafe fn to_value(self) -> (ConfigValueKind, ConfigValue) {
-        (ConfigValueKind::Int, ConfigValue { int_value: self })
+    fn to_value(self) -> ConfigValue {
+        ConfigValue { int_value: self }
     }
 }
 
-unsafe impl PropertyVal for bool {
-    unsafe fn from_value(kind: ConfigValueKind, value: ConfigValue) -> Result<Self, PropertyError> {
-        if kind != ConfigValueKind::Bool {
-            return Err(PropertyError::WrongType);
-        }
-        // SAFETY: Caller must uphold the active member being indicated by `kind`
-        // (We don't just use an enum because we wanted ABI compatibility)
-        unsafe { Ok(value.bool_value.as_bool()) }
+unsafe impl ConfigVal for bool {
+    const KIND: ConfigValueKind = ConfigValueKind::Bool;
+    unsafe fn from_value(value: ConfigValue) -> Self {
+        // SAFETY: Caller must uphold the active member being `bool_value`
+        unsafe { value.bool_value.into_bool() }
     }
-    unsafe fn to_value(self) -> (ConfigValueKind, ConfigValue) {
-        (
-            ConfigValueKind::Bool,
-            ConfigValue {
-                bool_value: self.into(),
-            },
-        )
+    fn to_value(self) -> ConfigValue {
+        ConfigValue {
+            bool_value: self.into(),
+        }
     }
 }
 
-unsafe impl PropertyVal for f64 {
-    unsafe fn from_value(kind: ConfigValueKind, value: ConfigValue) -> Result<Self, PropertyError> {
-        if kind != ConfigValueKind::Float {
-            return Err(PropertyError::WrongType);
-        }
-        // SAFETY: Caller must uphold the active member being indicated by `kind`
-        // (We don't just use an enum because we wanted ABI compatibility)
-        unsafe { Ok(value.float_value) }
+unsafe impl ConfigVal for f64 {
+    const KIND: ConfigValueKind = ConfigValueKind::Float;
+    unsafe fn from_value(value: ConfigValue) -> Self {
+        // SAFETY: Caller must uphold the active member being `float_value`
+        unsafe { value.float_value }
     }
-    unsafe fn to_value(self) -> (ConfigValueKind, ConfigValue) {
-        (ConfigValueKind::Float, ConfigValue { float_value: self })
+    fn to_value(self) -> ConfigValue {
+        ConfigValue { float_value: self }
     }
 }
