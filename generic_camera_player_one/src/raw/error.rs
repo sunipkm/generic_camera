@@ -1,4 +1,4 @@
-use player_one_camera_sys::{self as poa, CameraState, ffi_util::ValidationError};
+use player_one_camera_sys::{self as poa, CameraState, senti::ValidationError};
 error_set::error_set! {
 
     pub CameraError := {

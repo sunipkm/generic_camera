@@ -28,9 +28,15 @@ loom.workspace = true
 loom.optional = true
 rand = { version = "0.8", optional = true }
 refimage.workspace = true
+senti.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
-tokio = { version = "1.38.2", default-features = false, features = ["time"], optional = true }
+tokio = {
+  version = "1.38.2",
+  default-features = false,
+  features = ["time"],
+  optional = true
+}
 
 [dev-dependencies]
 rand = "0.8"

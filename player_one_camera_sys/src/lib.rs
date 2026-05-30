@@ -32,13 +32,21 @@
 //! on system paths.
 //!
 
-pub mod ffi_util;
-use ffi_util::*;
+pub use senti;
 use std::{
+    cell::Cell,
     ffi::{c_int, c_long},
     marker::PhantomData,
     mem::MaybeUninit,
-    rc::Rc,
+};
+
+use senti::{
+    MaybeInvalid, Reserved,
+    bytemuck::{self, NoUninit},
+    c_enum,
+    cstring::BoundedCString,
+    ptr::Buffer,
+    senti::{Senti, Terminated},
 };
 
 /// A boolean value represented as a C enum, using 4x as much storage as necessary
@@ -120,11 +128,16 @@ impl ImageFormat {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct MaybeInvalidImageFormat(pub MaybeInvalid<ImageFormat>);
+unsafe impl bytemuck::NoUninit for MaybeInvalidImageFormat {}
+
 const POA_END: c_int = -1;
-unsafe impl Terminated for MaybeInvalid<ImageFormat> {
+impl Terminated for MaybeInvalidImageFormat {
     // Terminal value of the supported formats array. This is not returned by any APIs
     // normally and is considered a terminator, so we don't put it in the enum
-    const TERMINAL: Self = MaybeInvalid::new_from_value(POA_END);
+    const SENTINEL: Self = MaybeInvalidImageFormat(MaybeInvalid::from_c_int(POA_END));
 }
 
 c_enum! {
@@ -507,17 +520,32 @@ impl ConfigParameter {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct SendButNotSync<Res>(PhantomData<Rc<Res>>);
+#[derive(Debug, Hash, PartialEq, Eq)]
+struct SendButNotSync<Res>(PhantomData<Cell<Res>>);
+
+impl<Res> Clone for SendButNotSync<Res> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Res> Copy for SendButNotSync<Res> {}
 
 /// An opaque identifier for some resource denoted by the marker type `Res`.
 /// These resources are safe to send across threads, but need manual synchronization.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Id<Res>(c_int, SendButNotSync<Res>);
 
+impl<T> Clone for Id<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for Id<T> {}
+
 impl<Res> Id<Res> {
-    /// Returns the underlying value of the id, useful for debugging
+    /// Returns the underlying value of the id, useful for debugging. For
+    /// binning modes, this is the value.
     pub const fn id(self) -> c_int {
         self.0
     }
@@ -530,8 +558,10 @@ pub enum Camera {}
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum BinningMode {}
 
-unsafe impl Terminated for Id<BinningMode> {
-    const TERMINAL: Self = Id(0, SendButNotSync(PhantomData));
+unsafe impl<T: 'static> NoUninit for Id<T> {}
+
+impl Terminated for Id<BinningMode> {
+    const SENTINEL: Self = Id(0, SendButNotSync(PhantomData));
 }
 
 /// A marker struct indicating that an [`Id`] represents a product
@@ -575,9 +605,9 @@ pub struct CameraProperties {
     /// The path of the camera in the computer host
     pub local_path: BoundedCString<256>,
     /// The binning modes supported by the camera, 1 == bin1, 2 == bin2,...
-    pub binning_modes: TerminatedArray<Id<BinningMode>, 8>,
+    pub binning_modes: Senti<Id<BinningMode>, 8>,
     /// Image formats supported by the camera, terminated with [`ImageFormat::End`].
-    pub formats: TerminatedArray<MaybeInvalid<ImageFormat>, 8>,
+    pub formats: Senti<MaybeInvalidImageFormat, 8>,
     /// Whether the camera sensor supports hardware binning
     pub harware_bin_supported: Bool,
     /// The camera's product ID. The vID of PlayerOne is `0xA0A0`.

@@ -1,4 +1,8 @@
 [package]
 name = "player_one_camera_sys"
+authors = ["Lily Grippo"]
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+senti.workspace = true

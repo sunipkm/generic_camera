@@ -15,16 +15,13 @@ use generic_camera::{
 };
 use player_one_camera_sys::{
     self as poa, Camera, CameraProperties, CameraState, ConfigAttributes, ConfigParameter,
-    ConfigValue, ConfigValueKind, Id, ImageFormat, PoaResult, close_camera,
-    ffi_util::{MaybeInvalid, ValidationError},
-    get_camera_count, get_state,
+    ConfigValue, ConfigValueKind, Id, ImageFormat, MaybeInvalidImageFormat, PoaResult,
+    close_camera, get_camera_count, get_state,
+    senti::{MaybeInvalid, ValidationError},
 };
 
 use crate::{
-    raw::{
-        error::{CameraError, RawError},
-        property::ConfigVal,
-    },
+    raw::{error::CameraError, property::ConfigVal},
     util::poa_call,
 };
 
@@ -119,13 +116,11 @@ impl OwnedCamera {
         // is in range
         unsafe { poa::set_config(self.id, prop, value, auto.into()).into_result() }
     }
-    fn cleanup(&mut self) -> Result<(), RawError> {
+    fn cleanup(&mut self) -> Result<(), poa::Error> {
         unsafe {
             _ = self.set_config_unchecked(ConfigParameter::Cooler, false, false);
             _ = poa::stop_exposure(self.id);
-            _ = poa::close_camera(self.id)
-                .into_result()
-                .map_err(|x| RawError::Camera(CameraError::Internal(x)))?;
+            _ = poa::close_camera(self.id).into_result()?;
         }
         Ok(())
     }
@@ -159,6 +154,7 @@ impl Attributes {
         let min = attrs.min_value;
         let max = attrs.max_value;
         let default = attrs.default_value;
+        todo!()
     }
 }
 
@@ -175,6 +171,7 @@ impl HandleInner {
     pub fn open_and_init(props: &CameraProperties) -> Result<Self, CameraError> {
         let mut owned = unsafe { OwnedCamera::new(props.camera_id)? };
         let props = owned.get_config_attrs()?;
+        todo!()
     }
     fn get_param_attr(&self, param: ConfigParameter) -> Option<&Attributes> {
         let idx = self
@@ -209,7 +206,7 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
         (DeviceCtrl::VendorName, ro_string.clone()),
         (DeviceCtrl::ModelName, ro_string.clone()),
         (
-            DeviceCtrl::Custom(CustomName::from("Product ID")),
+            DeviceCtrl::Custom(const { CustomName::new("Product ID").unwrap() }),
             product_id_prop,
         ), // (DeviceCtrl::CoolerPower)
     ];
@@ -297,8 +294,8 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
     let mut map = HashMap::from_iter([]);
     map
 }
-fn map_pixel_format(fmt: MaybeInvalid<ImageFormat>) -> Option<String> {
-    Some(match fmt.get().ok()? {
+fn map_pixel_format(fmt: MaybeInvalidImageFormat) -> Option<String> {
+    Some(match fmt.0.get().ok()? {
         ImageFormat::Mono8 => "MONO",
         ImageFormat::Raw8 => "RAW8",
         ImageFormat::Raw16 => "RAW16",

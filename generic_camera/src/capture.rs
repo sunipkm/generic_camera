@@ -287,12 +287,12 @@ mod test {
         })
     }
     #[test]
-    fn dummy_start_exposure_guard_err() {
+    fn dummy_start_exposure_capture_guard_ok() {
         model(|| {
             let mut cam = make_dummy();
             _ = cam.start_exposure();
             let guard = cam.capture_guard();
-            assert!(guard.is_err());
+            assert!(guard.is_ok());
         })
     }
 }

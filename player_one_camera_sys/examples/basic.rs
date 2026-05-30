@@ -4,7 +4,7 @@ use std::{io::Read, mem::MaybeUninit, time::Duration};
 
 use player_one_camera_sys::{
     self as poa, Bool, Camera, CameraState, ConfigParameter, ConfigValue, ConfigValueKind, Error,
-    Id, ImageFormat, Millis, ffi_util::Buffer, get_image_data,
+    Id, ImageFormat, Millis, get_image_data, senti::ptr::Buffer,
 };
 
 fn wait_for_user_input() {

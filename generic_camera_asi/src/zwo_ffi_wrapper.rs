@@ -8,8 +8,9 @@ use std::{
 
 use generic_camera::{
     GenCamCtrl, GenCamDescriptor, GenCamError, GenCamPixelBpp, GenCamRoi, Property, PropertyError,
-    PropertyValue, controls::AnalogCtrl, controls::DeviceCtrl, controls::ExposureCtrl,
-    controls::SensorCtrl, property::PropertyLims, property::PropertyType,
+    PropertyValue,
+    controls::{AnalogCtrl, CustomName, DeviceCtrl, ExposureCtrl, SensorCtrl},
+    property::{PropertyLims, PropertyType},
 };
 use log::warn;
 
@@ -386,7 +387,7 @@ pub(crate) fn get_caps(
     );
     if info.IsUSB3Camera == ASI_BOOL_ASI_TRUE as _ {
         caps.insert(
-            DeviceCtrl::Custom("UUID".into()).into(),
+            DeviceCtrl::Custom(const { CustomName::new("UUID").unwrap() }).into(),
             (
                 AsiControlType::Invalid,
                 Property::new(
