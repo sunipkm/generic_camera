@@ -5,51 +5,106 @@
 #[allow(unused_imports)]
 use crate::PropertyType;
 use documented::{Documented, DocumentedVariants};
+use senti::cstring::BoundedCString;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash, Eq, PartialOrd, Ord)]
 /// A custom name for a control.
 ///
-/// This is a 32-byte array that can be used to store a custom name for a control.
+/// This is a 16-byte array that can be used to store a custom name for a control.
+/// It must be non-empty and made solely out of the ASCII alphanumerics and the
+/// special characters `-_# `.
 ///
-/// # Note
-/// The name is trimmed to 32 bytes, so it is possible that the name is truncated.
 ///
 /// # Example
 /// ```
 /// use generic_camera::controls::CustomName;
 ///
-/// let name: CustomName = "UUID".into();
+/// let name: CustomName = CustomName::new("UUID").unwrap();
 /// assert_eq!(name.as_str(), "UUID");
 ///
-/// let name: CustomName = "My Custom Very Long Name".into();
-/// assert_eq!(name.as_str(), "My Custom Very L");
+/// let name: Option<CustomName> = CustomName::new("My Custom Very Long Name");
+/// assert_eq!(name, None);
+///
+/// const MY_COOL_NAME: CustomName = CustomName::new("Product ID").unwrap();
+/// assert_eq!(MY_COOL_NAME.as_str(), "Product ID")
 /// ```
-pub struct CustomName([u8; 16]);
+pub struct CustomName(BoundedCString<16>);
 
 impl CustomName {
-    /// Create a new custom name.
-    fn new(name: &str) -> Self {
-        let mut bytes = [0; 16];
-        let len = name.len().min(16);
-        bytes[..len].copy_from_slice(&name.as_bytes()[..len]);
-        Self(bytes)
+    /// Create a new custom name, returning `None` if the string is too long, empty,
+    /// or not made from ASCII alphanumerics and the characters
+    /// `-_# `.
+    ///
+    /// <div class="warning">
+    /// Currently, if the string contains a null byte, it will be truncated to before
+    /// that null byte since internally, for convenience,
+    /// we use a bounded C-style string that is terminated if and only if the length is not
+    /// the capacity. Do not rely on this behavior though.
+    /// </div>
+    pub const fn new(name: &str) -> Option<Self> {
+        let Some(inner) = BoundedCString::from_bytes(name.as_bytes()) else {
+            return None;
+        };
+        // I don't like this since it has to compute the length a second time, but
+        // it really doesn't matter
+        let bytes = inner.to_bytes();
+        if bytes.is_empty() {
+            return None;
+        }
+        // validate
+        let mut i = 0;
+        while i < bytes.len() {
+            if !bytes[i].is_ascii_alphanumeric() && !matches!(bytes[i], b'_' | b'-' | b' ' | b'#') {
+                return None;
+            }
+            i += 1;
+        }
+
+        Some(Self(inner))
     }
 
     /// Get the custom name as a string.
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.0)
-            .unwrap() // This is safe because the array is always valid UTF-8
-            .trim_end_matches(char::from(0))
+        // SAFETY: The constructor ensures that we are valid UTF-8
+        // by ensuring that the string is only made up of specific ASCII characters
+        unsafe { self.0.to_str_unchecked() }
     }
 }
-
-impl<'a, T: Into<&'a str>> From<T> for CustomName {
-    fn from(name: T) -> Self {
-        Self::new(name.into())
+impl Serialize for CustomName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_str().serialize(serializer)
     }
 }
-
+use serde::de::Error;
+impl<'de> Deserialize<'de> for CustomName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let res = <&'de str>::deserialize(deserializer)?;
+        if res.len() > 16 {
+            return Err(D::Error::custom("Custom name must be <16 bytes"));
+        }
+        if res.is_empty() {
+            return Err(D::Error::custom("Custom name must not be empty"));
+        }
+        // This is more strict than the constructor, but deserializing shouldn't
+        // allow implicit truncation.
+        if res.as_bytes().contains(&b'\0') {
+            return Err(D::Error::custom("Custom name must not contain a null byte"));
+        }
+        let Some(res) = Self::new(res) else {
+            return Err(D::Error::custom(
+                "Custom name must only contain ASCII alphanumerics, spaces, and any of `#-_`",
+            ));
+        };
+        Ok(res)
+    }
+}
 /// Describes device-specific control options.
 #[derive(
     Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Documented, DocumentedVariants,
@@ -180,7 +235,7 @@ pub enum TriggerCtrl {
 pub enum ExposureCtrl {
     /// Select exposure mode ([`PropertyType::EnumStr`])
     Mode,
-    /// Select exposure time ([`PropertyType::Float`])
+    /// Select exposure time ([`PropertyType::Duration`])
     ExposureTime,
     /// Select exposure auto mode ([`PropertyType::EnumStr`] or [`PropertyType::Bool`])
     Auto,

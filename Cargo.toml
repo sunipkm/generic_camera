@@ -1,14 +1,27 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
-  "gencam_asi_example",
+  # "gencam_asi_example",
   "generic_camera",
   # "generic_camera_asi",
+  "generic_camera_player_one",
+  "player_one_camera_sys",
   "zwo_asi_sys"
 ]
 
 [workspace.dependencies]
 atomic-time = "0.1"
-generic-camera = { path = "generic_camera", version = "0.0.12", default-features = false }
+generic-camera = {
+  path = "generic_camera",
+  version = "0.0.12",
+  default-features = false
+}
 loom = "0.7.2"
 refimage = { version = "1.0.0-pre4", default-features = false }
+# remember to always pin your git dependencies or else things will break out from under you,
+# even if it's your own library.
+senti = {
+  git = "https://github.com/lilyyy411/senti.git",
+  rev = "d612081c991e2918264185ee8f7319fd0ba6871e",
+  version = "0.1.0"
+}
