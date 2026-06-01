@@ -1,8 +1,11 @@
 use generic_camera::{GenCamDescriptor, PropertyValue};
-use player_one_camera_sys::{self as poa, BayerPattern, CameraProperties};
-use std::{collections::HashMap, ffi::c_int, marker::PhantomData, rc::Rc, sync::Arc};
+use player_one_camera_sys::{self as poa, BayerPattern, Camera, CameraProperties, Id};
+use std::{collections::HashMap, ffi::c_int, marker::PhantomData};
 
-use crate::util::poa_call;
+use crate::{
+    raw::{error::CameraError, handle::Handle},
+    util::poa_call,
+};
 
 struct NotSendSync(PhantomData<*const ()>);
 /// A proxy for driver-global state
@@ -77,11 +80,14 @@ impl Driver {
             info: make_info(&props),
         })
     }
-    /// Returns an iterator over all of properties od currently available cameras
-    fn get_raw_cameras(&self) -> impl Iterator<Item = Result<CameraProperties, poa::Error>> + '_ {
-        let num_cams = unsafe { poa::get_camera_count() };
-        // SAFETY:
-        (0..num_cams).map(|cam_idx| unsafe { poa_call!(poa::get_camera_properties(cam_idx) @ out) })
+    pub fn connect(
+        &self,
+        descriptor: &GenCamDescriptor,
+    ) -> Result<(Handle, CameraProperties), CameraError> {
+        // SAFETY: `Id` is repr(transparent) and wraps a c_int. This id came from the driver
+        let desc: Id<Camera> = unsafe { std::mem::transmute(descriptor.id as c_int) };
+        let props = unsafe { poa_call!(poa::get_camera_properties_by_id(desc) @ out) }?;
+        Ok((Handle::open_and_init(&props)?, props))
     }
 }
 

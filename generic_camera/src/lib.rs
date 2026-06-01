@@ -160,7 +160,7 @@ pub trait GenCam: Send + std::fmt::Debug {
     /// Set a property to a value that the device is allowed to choose automatically.
     ///
     /// Depending on implementation, `value` may act as a "hint" or an "initial value" of some kind,
-    /// or if the device does not support automatically setting the given property, `value` is used as a
+    /// or if the device does not support automatically setting the given property, `value` could be used as a
     /// fallback.
     fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 
@@ -239,7 +239,7 @@ pub trait GenCamInfo: Send + Sync + std::fmt::Debug {
     /// Set a property to a value that the device is allowed to choose automatically.
     ///
     /// Depending on implementation, `value` may act as a "hint" or an "initial value" of some kind,
-    /// or if the device does not support automatically setting the given property, `value` is used as a
+    /// or if the device does not support automatically setting the given property, `value` may be used as a
     /// fallback.
     fn set_property_auto(&mut self, name: GenCamCtrl, value: &PropertyValue) -> GenCamResult<()>;
 }

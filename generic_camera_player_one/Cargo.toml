@@ -8,3 +8,4 @@ edition = "2024"
 error_set = "0.9.1"
 generic-camera = { path = "../generic_camera", version = "0.0.12" }
 player_one_camera_sys = { path = "../player_one_camera_sys", version = "0.1.0" }
+refimage.workspace = true

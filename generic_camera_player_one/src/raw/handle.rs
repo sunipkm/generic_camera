@@ -1,34 +1,36 @@
 use std::{
-    cell::{LazyCell, OnceCell},
     collections::HashMap,
     f64,
-    marker::{PhantomData, PhantomPinned},
     mem::MaybeUninit,
-    ops::{Deref, DerefMut, Range, RangeInclusive},
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant, SystemTime},
 };
 
 use generic_camera::{
-    GenCamCtrl, Property,
+    GenCamCtrl, GenCamRoi, Property, PropertyValue,
     controls::{CustomName, DeviceCtrl, SensorCtrl},
     property::PropertyLims,
 };
 use player_one_camera_sys::{
-    self as poa, Camera, CameraProperties, CameraState, ConfigAttributes, ConfigParameter,
-    ConfigValue, ConfigValueKind, Id, ImageFormat, MaybeInvalidImageFormat, PoaResult,
-    close_camera, get_camera_count, get_state,
-    senti::{MaybeInvalid, ValidationError},
+    self as poa, Bool, Camera, CameraProperties, CameraState, ConfigAttributes, ConfigParameter,
+    Id, ImageFormat, MaybeInvalidImageFormat, Millis,
+    senti::{MaybeInvalid, bytemuck, cstring::BoundedCString, ptr::Buffer},
 };
+use refimage::{BayerPattern, ColorSpace, EXPOSURE_KEY, GenericImageRef, ImageRef};
 
 use crate::{
-    raw::{error::CameraError, property::ConfigVal},
+    raw::{
+        error::{CameraError, PropertyError},
+        property::{ConfigVal, gencam2poa_param, poa2gencam_ctrl},
+    },
     util::poa_call,
 };
 
 /// An owned handle to an open and initialized camera device
 /// When this camera goes out of scope, it is closed.
 #[repr(transparent)]
-pub struct OwnedCamera {
+#[derive(Debug)]
+struct OwnedCamera {
     id: Id<Camera>,
 }
 impl OwnedCamera {
@@ -120,7 +122,7 @@ impl OwnedCamera {
         unsafe {
             _ = self.set_config_unchecked(ConfigParameter::Cooler, false, false);
             _ = poa::stop_exposure(self.id);
-            _ = poa::close_camera(self.id).into_result()?;
+            poa::close_camera(self.id).into_result()?;
         }
         Ok(())
     }
@@ -132,57 +134,464 @@ impl Drop for OwnedCamera {
         // close_camera(self.id)
     }
 }
-const READABLE: u8 = 0b1;
-const WRITABLE: u8 = 0b10;
-const SUPPORTS_AUTO: u8 = 0b100;
 
-struct Attributes {
-    param: ConfigParameter,
-    min: ConfigValue,
-    max: ConfigValue,
-    default: ConfigValue,
-    name: Box<str>,
-    description: Box<str>,
-    // we store the flags in a u8 so we don't waste 12 bytes doing literally nothing
-    flags: u8,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CaptureState {
+    Idle,
+    Capturing(Option<Instant>),
+    Ready,
 }
-
-impl Attributes {
-    pub fn new(attrs: ConfigAttributes) -> Option<Self> {
-        // If the library reports a parameter we don't know about, just ignore it
-        let kind = attrs.kind.get().ok()?;
-        let min = attrs.min_value;
-        let max = attrs.max_value;
-        let default = attrs.default_value;
-        todo!()
-    }
-}
-
-struct HandleInner {
+#[derive(Debug)]
+pub struct HandleInner {
     camera: OwnedCamera,
+    capture_state: CaptureState,
+    gencam_props: Arc<HashMap<GenCamCtrl, Property>>,
     // read-only, except the user custom id may change if the user sets it once.
     // Maybe I should also do some layout adjustment because this struct
     // is 992 bytes
     properties: CameraProperties,
-    // read-only, sorted list of config parameter attributes by parameter.
-    param_to_attrs: Box<[Attributes]>,
+    counter: usize,
 }
 impl HandleInner {
     pub fn open_and_init(props: &CameraProperties) -> Result<Self, CameraError> {
         let mut owned = unsafe { OwnedCamera::new(props.camera_id)? };
-        let props = owned.get_config_attrs()?;
-        todo!()
+        let attrs = owned.get_config_attrs()?;
+        let mut prop_map = camera_properties_to_gencam(props);
+        prop_map.extend(attrs.filter_map(|attrs| {
+            let (ctrl, codec) = poa2gencam_ctrl(attrs.kind.get().ok()?)?;
+            Some((ctrl, codec.poa2gencam_property(attrs)?))
+        }));
+        let capture_state = match owned.get_state()? {
+            CameraState::Opened => CaptureState::Idle,
+            CameraState::Exposing => CaptureState::Capturing(None),
+            CameraState::Closed => return Err(CameraError::Internal(poa::Error::InvalidId)),
+        };
+        Ok(Self {
+            camera: owned,
+            properties: *props,
+            gencam_props: Arc::new(prop_map),
+            counter: 0,
+            capture_state,
+        })
     }
-    fn get_param_attr(&self, param: ConfigParameter) -> Option<&Attributes> {
-        let idx = self
-            .param_to_attrs
-            .binary_search_by_key(&param, |attr| attr.param)
-            .ok()?;
-        Some(self.param_to_attrs.get(idx)?)
+    fn update_capture_state(&mut self) -> Result<(), poa::Error> {
+        #[allow(clippy::single_match, reason = "Might change later")]
+        #[allow(
+            clippy::collapsible_match,
+            reason = "Guards should not have side effects, so I will not make this a guard"
+        )]
+        match self.capture_state {
+            CaptureState::Capturing(_) => {
+                if unsafe { poa_call!(poa::is_image_ready(self.camera.id) @ out) }?.into_bool() {
+                    self.capture_state = CaptureState::Ready;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    pub fn capture_state(&mut self) -> Result<&CaptureState, poa::Error> {
+        self.update_capture_state()?;
+        Ok(&self.capture_state)
+    }
+    fn get_special_prop(
+        &mut self,
+        ctrl: GenCamCtrl,
+    ) -> Result<Option<(PropertyValue, bool)>, PropertyError> {
+        Ok(Some((
+            match ctrl {
+                GenCamCtrl::Device(DeviceCtrl::UserId) => self
+                    .properties
+                    .user_custom_id
+                    .to_str_lossy()
+                    .into_owned()
+                    .into(),
+
+                GenCamCtrl::Device(DeviceCtrl::SerialNumber) => {
+                    self.properties.serial.to_str_lossy().into_owned().into()
+                }
+                GenCamCtrl::Device(DeviceCtrl::ModelName) => self
+                    .properties
+                    .model_name
+                    .to_str_lossy()
+                    .into_owned()
+                    .into(),
+                GenCamCtrl::Sensor(
+                    SensorCtrl::BinningBoth | SensorCtrl::BinningHorz | SensorCtrl::BinningVert,
+                ) => {
+                    // this should never fail since the id is valid and we're open, but handle it anyway
+                    let bin_idx = unsafe {
+                        poa_call!(poa::get_image_bin(self.camera.id) @ out)
+                            .map_err(|_| PropertyError::Failed)?
+                    };
+                    // this should never be out of bounds unless the driver is bugged,
+                    // but I really don't want to panic
+                    let bin = self
+                        .properties
+                        .binning_modes
+                        .to_slice()
+                        .get(bin_idx as usize)
+                        .ok_or(PropertyError::Failed)?;
+                    let factor = bin.id() as u64;
+                    factor.into()
+                }
+                GenCamCtrl::Sensor(SensorCtrl::PixelHeight | SensorCtrl::PixelWidth) => {
+                    self.properties.pixel_size.into()
+                }
+                GenCamCtrl::Sensor(SensorCtrl::WidthMax) => {
+                    (self.properties.max_width as u64).into()
+                }
+                GenCamCtrl::Sensor(SensorCtrl::HeightMax) => {
+                    (self.properties.max_height as u64).into()
+                }
+                GenCamCtrl::Sensor(SensorCtrl::PixelFormat) => {
+                    let fmt = unsafe {
+                        poa_call!(poa::get_image_format(self.camera.id) @ out)
+                            .map_err(|_| PropertyError::Failed)
+                    }?;
+                    map_pixel_format(MaybeInvalidImageFormat(fmt))
+                        .unwrap_or_else(|| "UNKNOWN".to_owned())
+                        .into()
+                }
+
+                _ => return Ok(None),
+            },
+            false,
+        )))
+    }
+    pub fn get_property(
+        &mut self,
+        ctrl: GenCamCtrl,
+    ) -> Result<(PropertyValue, bool), PropertyError> {
+        if let Some(res) = self.get_special_prop(ctrl)? {
+            return Ok(res);
+        };
+        let (prop, marshalling) = gencam2poa_param(ctrl).ok_or(PropertyError::Unsupported)?;
+        let res = unsafe { poa_call!(poa::get_config(self.camera.id, prop) @ out_value is_auto) };
+        match res {
+            Ok((val, auto)) => Ok((
+                unsafe { marshalling.poa2gencam_quantity(prop.value_type(), val) }
+                    .ok_or(PropertyError::WrongType)?,
+                auto.into_bool(),
+            )),
+            Err(poa::Error::InvalidConfig) => Err(PropertyError::Unsupported),
+            Err(_) => Err(PropertyError::Failed),
+        }
+    }
+    fn set_flip(&mut self, flip_x: bool, flip_y: bool) -> Result<(), PropertyError> {
+        // POA cameras are annoying. They have 4 linked parameters for the different combinations of flip
+        // and have setters that ignore the value. It essentially acts like an enum property but it's just
+        // 4 different properties.
+        let param = match (flip_x, flip_y) {
+            (false, false) => ConfigParameter::FlipNone,
+            (true, false) => ConfigParameter::FlipHorizontal,
+            (false, true) => ConfigParameter::FlipVertical,
+            (true, true) => ConfigParameter::FlipBoth,
+        };
+        unsafe { self.camera.set_config_unchecked(param, true, false) }
+            .map_err(|_| PropertyError::Failed)?;
+        Ok(())
+    }
+    fn set_special_prop(
+        &mut self,
+        ctrl: GenCamCtrl,
+        value: &PropertyValue,
+        _: bool,
+    ) -> Result<Option<()>, PropertyError> {
+        #[allow(clippy::unit_arg, reason = "")]
+        Ok(Some(match ctrl {
+            GenCamCtrl::Device(DeviceCtrl::UserId) => {
+                let prop_string: &str = value.as_enum_str().ok_or(PropertyError::WrongType)?;
+                let string =
+                    BoundedCString::from_str(prop_string).ok_or(PropertyError::ValueOutOfRange)?;
+                unsafe {
+                    poa::set_user_custom_id(
+                        self.camera.id,
+                        Some(&string),
+                        string.to_bytes().len() as _,
+                    )
+                    .into_result()
+                }
+                .map_err(|_| PropertyError::Failed)?;
+                // now we have to refresh the camera properties since the user id changed.
+                // I'm not sure if we really need to refresh the whole struct since documentation
+                // is unclear
+                let Ok(prop) =
+                    (unsafe { poa_call!(poa::get_camera_properties_by_id(self.camera.id) @ prop) })
+                else {
+                    return Ok(Some(()));
+                };
+                // assert!(self.camera.id == prop.camera_id, "the library broke their own invariants")
+                self.properties = prop;
+            }
+            GenCamCtrl::Sensor(SensorCtrl::BinningBoth) => {
+                let val: u64 = value.as_u64().ok_or(PropertyError::WrongType)?;
+                let bin = self
+                    .properties
+                    .binning_modes
+                    .to_slice()
+                    .iter()
+                    .find(|x| x.id() as u64 == val)
+                    .ok_or(PropertyError::ValueOutOfRange)?;
+                unsafe { poa::set_image_bin(self.camera.id, *bin).into_result() }
+                    .map_err(|_| PropertyError::Failed)?;
+            }
+            GenCamCtrl::Sensor(SensorCtrl::PixelFormat) => {
+                let string = value.as_enum_str().ok_or(PropertyError::WrongType)?;
+                let fmt = match string {
+                    "mono" | "MONO" => ImageFormat::Mono8,
+                    "raw8" | "RAW8" => ImageFormat::Raw8,
+                    "raw16" | "RAW16" => ImageFormat::Raw16,
+                    "rgb24" | "RGB24" => ImageFormat::Rgb24,
+                    _ => return Err(PropertyError::ValueOutOfRange),
+                };
+                if !self
+                    .properties
+                    .formats
+                    .to_slice()
+                    .contains(&MaybeInvalidImageFormat(MaybeInvalid::new(fmt)))
+                {
+                    return Err(PropertyError::ValueOutOfRange);
+                }
+                unsafe {
+                    poa::set_image_format(self.camera.id, fmt)
+                        .into_result()
+                        .map_err(|_| PropertyError::Failed)?
+                }
+            }
+            GenCamCtrl::Sensor(SensorCtrl::ReverseX) => {
+                let to: bool = value.as_bool().ok_or(PropertyError::WrongType)?;
+
+                let (flip_y, _) = self
+                    .camera
+                    .get_config::<bool>(ConfigParameter::FlipVertical)
+                    .map_err(|_| PropertyError::Failed)?;
+                self.set_flip(to, flip_y)?;
+            }
+            GenCamCtrl::Sensor(SensorCtrl::ReverseY) => {
+                let to: bool = value.as_bool().ok_or(PropertyError::WrongType)?;
+
+                let (flip_x, _) = self
+                    .camera
+                    .get_config::<bool>(ConfigParameter::FlipHorizontal)
+                    .map_err(|_| PropertyError::Failed)?;
+                self.set_flip(flip_x, to)?;
+            }
+            // do nothing. We have no special selectors.
+            GenCamCtrl::Device(DeviceCtrl::TemperatureSelector) => {}
+            _ => return Ok(None),
+        }))
+    }
+    pub fn exposure_time(&mut self) -> Result<Duration, poa::Error> {
+        let (exposure_time, _) = self
+            .camera
+            .get_config::<f64>(ConfigParameter::ExposureSeconds)?;
+        Ok(Duration::from_secs_f64(exposure_time))
+    }
+    pub fn set_property(
+        &mut self,
+        ctrl: GenCamCtrl,
+        value: &PropertyValue,
+        auto: bool,
+    ) -> Result<(), PropertyError> {
+        if let Ok(CameraState::Exposing) = self.camera.get_state() {
+            return Err(PropertyError::Exposing);
+        }
+        if self.set_special_prop(ctrl, value, auto)?.is_some() {
+            return Ok(());
+        }
+
+        let prop = self
+            .gencam_props
+            .get(&ctrl)
+            .ok_or(PropertyError::Unsupported)?;
+        prop.validate(value)
+            .map_err(|_| PropertyError::ValueOutOfRange)?;
+        let (param, marshalling) = gencam2poa_param(ctrl).ok_or(PropertyError::Unsupported)?;
+        let (kind, config) = marshalling
+            .gencam2poa_quantity(value.clone())
+            .ok_or(PropertyError::WrongType)?;
+        if kind != param.value_type() {
+            return Err(PropertyError::WrongType);
+        }
+        let res =
+            unsafe { poa::set_config(self.camera.id, param, config, auto.into()).into_result() };
+        match res {
+            Ok(()) => Ok(()),
+            Err(poa::Error::InvalidConfig) => Err(PropertyError::Unsupported),
+            _ => Err(PropertyError::Failed),
+        }
+    }
+
+    pub fn start_exposure(&mut self) -> Result<(), CameraError> {
+        if matches!(self.capture_state()?, CaptureState::Capturing(_)) {
+            return Err(CameraError::Internal(poa::Error::Exposing));
+        }
+        unsafe { poa::start_exposure(self.camera.id, Bool::True) }.into_result()?;
+        self.capture_state = CaptureState::Capturing(Some(Instant::now()));
+        Ok(())
+    }
+    pub fn stop_exposure(&mut self) -> Result<(), CameraError> {
+        if !matches!(self.capture_state()?, CaptureState::Capturing(_)) {
+            return Ok(());
+        }
+        unsafe { poa::stop_exposure(self.camera.id).into_result()? };
+        self.capture_state = CaptureState::Idle;
+        Ok(())
+    }
+    pub fn get_roi(&mut self) -> Result<GenCamRoi, CameraError> {
+        let (w, h) = unsafe { poa_call!(poa::get_roi_size(self.camera.id) @ w h) }?;
+        let (x, y) = unsafe { poa_call!(poa::get_roi_start_pos(self.camera.id) @ x y) }?;
+        Ok(GenCamRoi {
+            x_min: x as _,
+            y_min: y as _,
+            width: w as _,
+            height: h as _,
+        })
+    }
+    pub fn set_roi(&mut self, roi: GenCamRoi, to: &mut GenCamRoi) -> Result<(), CameraError> {
+        let GenCamRoi {
+            x_min,
+            y_min,
+            width,
+            height,
+        } = roi;
+
+        unsafe { poa::set_roi_size(self.camera.id, width.into(), height.into()).into_result()? };
+        unsafe {
+            poa::set_roi_start_pos(self.camera.id, x_min.into(), y_min.into()).into_result()?
+        };
+        *to = self.get_roi()?;
+        Ok(())
+    }
+    pub fn download<'buf>(
+        &mut self,
+        out: &'buf mut Vec<u8>,
+        roi: GenCamRoi,
+    ) -> Result<GenericImageRef<'buf>, CameraError> {
+        if self.capture_state != CaptureState::Ready {
+            return Err(CameraError::NotReady);
+        }
+        let image_fmt = unsafe { poa_call!(poa::get_image_format(self.camera.id) @ out) }?
+            .get()
+            .map_err(|_| CameraError::UnknownImageFormat)?;
+        // resize the buffer to fit the image format
+        out.resize(image_fmt.buffer_size(roi.width as _, roi.height as _), 0);
+        let (_, res) = Buffer::with(out, |buff, len| {
+            // SAFETY: `Buffer<T>` has the same layout as `NonNull<T>` and we know this operation
+            // won't uninitialize the buffer
+            let buf: Buffer<MaybeUninit<u8>> = unsafe { std::mem::transmute(buff) };
+            unsafe { poa::get_image_data(self.camera.id, buf, len as _, Millis(0)).into_result() }
+        });
+        res?;
+        let temp = self
+            .camera
+            .get_config::<f64>(ConfigParameter::Temperature)
+            .ok()
+            .map(|(x, _)| x)
+            .unwrap_or(-273.16);
+        let now = SystemTime::now();
+        let bayer = match self.properties.bayer_pattern.get() {
+            Ok(poa::BayerPattern::Bg) => Some(BayerPattern::Bggr),
+            Ok(poa::BayerPattern::Gb) => Some(BayerPattern::Gbrg),
+            Ok(poa::BayerPattern::Gr) => Some(BayerPattern::Grbg),
+            Ok(poa::BayerPattern::Rg) => Some(BayerPattern::Rggb),
+            _ => None,
+        };
+        let colorspace = match image_fmt {
+            ImageFormat::Mono8 | ImageFormat::Raw8 | ImageFormat::Raw16 => ColorSpace::Gray,
+            ImageFormat::Rgb24 => match bayer {
+                Some(bayer) => ColorSpace::Bayer(bayer),
+                None => ColorSpace::Rgb,
+            },
+        };
+
+        let mut img = match image_fmt {
+            ImageFormat::Mono8 | ImageFormat::Raw8 | ImageFormat::Rgb24 => {
+                // This cannot error. If it does error, that means there's a bug.
+                let img =
+                    ImageRef::new(out, roi.width.into(), roi.height.into(), colorspace.clone())
+                        .unwrap();
+                GenericImageRef::new(now, img.into())
+            }
+            ImageFormat::Raw16 => {
+                let img = ImageRef::new(
+                    // this shouldn't panic since any reasonable allocator will
+                    // align the allocation to more than 1
+                    bytemuck::cast_slice_mut::<u8, u16>(out),
+                    roi.width.into(),
+                    roi.height.into(),
+                    colorspace.clone(),
+                )
+                .unwrap();
+                GenericImageRef::new(now, img.into())
+            }
+        };
+        _ = img.insert_key("IMGSER", {
+            let c = self.counter;
+            self.counter += 1;
+            c as u32
+        });
+        if let Ok((time, _)) = self
+            .camera
+            .get_config::<f64>(ConfigParameter::ExposureSeconds)
+        {
+            _ = img.insert_key(
+                EXPOSURE_KEY,
+                (Duration::from_secs_f64(time), "Exposure Time"),
+            )
+        }
+        if let Ok((gain, _)) = self.camera.get_config::<i64>(ConfigParameter::Gain) {
+            // wait? what unit is the gain in again?. The poa docs don't say and I'll just guess and fix it later if
+            // I'm wrong.
+            _ = img.insert_key("GAIN", (gain as f64 * 0.1, "Gain (dB)"));
+        }
+        if let Ok((egain, _)) = self.camera.get_config::<i64>(ConfigParameter::EGain) {
+            _ = img.insert_key("ADU2ELEC", (egain, "Electrons per ADU (Sensor Bit Depth)"));
+        }
+        _ = img.insert_key("SENSORBPP", (self.properties.bit_depth, "Sensor bit depth"));
+        _ = img.insert_key("XOFFSET", (roi.x_min, "X offset"));
+        _ = img.insert_key("YOFFSET", (roi.y_min, "Y offset"));
+        'b: {
+            if let Ok(bin_idx) = unsafe { poa_call!(poa::get_image_bin(self.camera.id) @ out) } {
+                let Some(id) = self
+                    .properties
+                    .binning_modes
+                    .to_slice()
+                    .get(bin_idx as usize)
+                else {
+                    break 'b;
+                };
+                let bin_size = id.id();
+                _ = img.insert_key("XBINNING", (bin_size, "X binning"));
+                _ = img.insert_key("YBINNING", (bin_size, "Y binning"));
+            }
+        }
+
+        _ = img.insert_key("CCD-TEMP", (temp, "CCD temperature (C)"));
+        _ = img.insert_key(
+            "CAMERA",
+            (
+                self.properties.model_name.to_str_lossy().into_owned(),
+                "Camera name",
+            ),
+        );
+        _ = img.insert_key(
+            "SERIAL",
+            (
+                self.properties.serial.to_str_lossy().into_owned(),
+                "Camera serial number",
+            ),
+        );
+        if colorspace != ColorSpace::Gray {
+            _ = img.insert_key("XBAYOFF", (roi.x_min % 2, "X offset of Bayer pattern"));
+            _ = img.insert_key("YBAYOFF", (roi.y_min % 2, "Y offset of Bayer pattern"));
+        }
+        self.capture_state = CaptureState::Idle;
+        Ok(img)
     }
 }
 fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, Property> {
-    // DeviceCtrl
     let any_string = PropertyLims::EnumStr {
         variants: vec![],
         default: String::new(),
@@ -291,19 +700,45 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
             ),
         ),
     ];
-    let mut map = HashMap::from_iter([]);
-    map
+    let props_iter = sensor_props
+        .into_iter()
+        .map(|(ctl, prop)| (GenCamCtrl::from(ctl), prop))
+        .chain(
+            device_props
+                .into_iter()
+                .map(|(ctl, prop)| (GenCamCtrl::from(ctl), prop)),
+        );
+
+    HashMap::from_iter(props_iter)
 }
 fn map_pixel_format(fmt: MaybeInvalidImageFormat) -> Option<String> {
-    Some(match fmt.0.get().ok()? {
-        ImageFormat::Mono8 => "MONO",
-        ImageFormat::Raw8 => "RAW8",
-        ImageFormat::Raw16 => "RAW16",
-        ImageFormat::Rgb24 => "RGB24",
-    })
-    .map(<_>::to_owned)
+    Some(
+        match fmt.0.get().ok()? {
+            ImageFormat::Mono8 => "MONO",
+            ImageFormat::Raw8 => "RAW8",
+            ImageFormat::Raw16 => "RAW16",
+            ImageFormat::Rgb24 => "RGB24",
+        }
+        .to_owned(),
+    )
 }
-/// A handle to an owned camera
+
+/// A handle to an owned camera. This is used both for the info and main camera struct
+#[derive(Clone, Debug)]
 pub struct Handle {
-    camera: Arc<Mutex<HandleInner>>,
+    pub(crate) inner: Arc<Mutex<HandleInner>>,
+    // we need to store this here beause list_properties needs to
+    // be able to return a reference
+    pub(crate) gencam_props: Arc<HashMap<GenCamCtrl, Property>>,
+}
+
+impl Handle {
+    pub fn open_and_init(props: &CameraProperties) -> Result<Self, CameraError> {
+        let inner = HandleInner::open_and_init(props)?;
+        let gencam_props = inner.gencam_props.clone();
+        Ok(Self {
+            inner: Arc::new(inner.into()),
+            gencam_props,
+        })
+    }
 }

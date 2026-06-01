@@ -3,9 +3,9 @@ resolver = "3"
 members = [
   # "gencam_asi_example",
   "generic_camera",
+  "generic_camera_asi",
   "generic_camera_player_one",
   "player_one_camera_sys",
-  # "generic_camera_asi",
   "zwo_asi_sys"
 ]
 
@@ -22,6 +22,6 @@ refimage = { version = "1.0.0-pre4", default-features = false }
 # even if it's your own library.
 senti = {
   git = "https://github.com/lilyyy411/senti.git",
-  rev = "519fb0bf52b71c7b2e471b78bffcd6b59fc6aee1",
+  rev = "d612081c991e2918264185ee8f7319fd0ba6871e",
   version = "0.1.0"
 }

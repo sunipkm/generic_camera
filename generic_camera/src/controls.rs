@@ -235,7 +235,7 @@ pub enum TriggerCtrl {
 pub enum ExposureCtrl {
     /// Select exposure mode ([`PropertyType::EnumStr`])
     Mode,
-    /// Select exposure time ([`PropertyType::Float`])
+    /// Select exposure time ([`PropertyType::Duration`])
     ExposureTime,
     /// Select exposure auto mode ([`PropertyType::EnumStr`] or [`PropertyType::Bool`])
     Auto,

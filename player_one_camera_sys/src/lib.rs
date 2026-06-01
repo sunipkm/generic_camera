@@ -18,7 +18,7 @@
 //!
 //! ## Dependencies
 //! This crate requires `libusb-1.0-dev` along with an
-//! an installation of the [Player One Camera SDK](https://www.zwoastro.com/downloads/developers).
+//! an installation of the [Player One Camera SDK](https://player-one-astronomy.com/service/software/).
 //! The include directory need not be installed since we hand-write all of the definitions.
 //!
 //! ### Searching
@@ -30,7 +30,6 @@
 //!
 //! If this variable is not set, then the crate automatically searches for the library path
 //! on system paths.
-//!
 
 pub use senti;
 use std::{
@@ -378,84 +377,95 @@ pub union ConfigValue {
     pub bool_value: Bool,
 }
 
-c_enum! {
-    #[doc(alias = "POAConfig")]
-    /// The configurable parameters for a camera
-    #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum ConfigParameter {
-        /// Exposure time in microseconds, `10..=2000000000`, read/write, recommended to use `ExposureSeconds` instead, `Int`
-        ExposureMicros = 0,
-        /// Gain, read/write, `Int`
-        Gain,
-        /// Hardware bin, read/write, `Bool`
-        HardwareBin,
-        /// Camera temperature (Celcius), read-only, `Float`
-        Temperature,
-        /// Red channel white balance, `-1200..=1200`, read/write, `Int`
-        WhiteBalanceR,
-        /// Green channel white balance, `-1200..=1200`, read/write, `Int`
-        WhiteBalanceG,
-        /// Blue channel white balance, `-1200..=1200`, read/write, `Int`
-        WhiteBalanceB,
-        /// Camera offset, read/write, `Int`
-        Offset,
-        /// Maximum gain when auto-adjust is enabled, read/write, `Int`
-        AutoExposureMaxGain,
-        /// Maximum exposure when auto-adjust is enabled (unit: millis), read/write, `Int`
-        AutoExposureMaxExposure,
-        /// Target brightness when auto-adjust is enabled, read/write, `Int`
-        AutoExposureBrightness,
-        /// ST4 guide north, generally, it's DEC+ on the mount, read/write, `Bool`
-        GuideNorth,
-        /// ST4 guide south, generally, it's DEC- on the mount, read/write, `Bool`
-        GuideSouth,
-        /// ST4 guide east, generally, it's RA+ on the mount, read/write, `Bool`
-        GuideEast,
-        /// ST4 guide west, generally, it's RA- on the mount, read/write, `Bool`
-        GuideWest,
-        /// e/ADU, This value will change with gain, read-only, `Float`
-        EGain,
-        /// Cooler power percentage, `0..=100`, (only cool camera), read-only, `Int`
-        CoolerPower,
-        /// Camera target temperature (in degrees Celcius), read/write, `Int`
-        TargetTemp,
-        /// Turn cooler (and fan) on or off, read/write, `Bool`
-        Cooler,
-        /// (Deprecated) State of the lens heater, read-only, `Bool`
-        #[deprecated]
-        Heater,
-        /// Lens heater power percentage, `0..=100`, read/write, `Int`
-        HeaterPower,
-        /// Radiator fan power percentage, `0..=100`, read/write, `Int`
-        FanPower,
-        /// No flip. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
-        FlipNone,
-        /// Flip the image horizontally. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
-        FlipHorizontal,
-        /// Flip the image vertically. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
-        FlipVertical,
-        /// Flip the image both vertically and horizontally. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
-        FlipBoth,
-        /// Frame rate limit, `0..=2000`, 0 means no limit, read/write, `Int`
-        FrameLimit,
-        /// High Quality Image, for those without DDR camera (guide camera), if set to `True`, this will reduce the waviness and stripe of the image,
-        /// but frame rate may go down. Note: this config has no effect on those cameras that have DDR. read/write, `Bool`
-        Hqi,
-        /// USB bandwidth limit, read/write, `Int`
-        UsbBandwidthLimit,
-        /// Take the sum of pixels after binning, `True` is sum and `False` is average, default is `False`, read/write, `Bool`
-        BinSum,
-        /// Only for color cameras, when set to `True`, pixel binning will use neighbor pixels and the image after
-        /// binning will lose the bayer pattern, read/write, `Bool`
-        MonoBin,
-        /// Exposure time in seconds, `0.00001..=7200.0`, read/write, `Float`
-        ExposureSeconds,
-    }
+mod config_parameter {
+    // we need this to tell the compiler to shut the hell
+    // up about using the depreccated
+    // `ConfigParameter::Heater` which is literally only used
+    // to match on to check validity
+    #![allow(deprecated)]
+    use senti::c_enum;
 
+    c_enum! {
+        #[doc(alias = "POAConfig")]
+        /// The configurable parameters for a camera
+        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum ConfigParameter {
+            /// Exposure time in microseconds, `10..=2000000000`, read/write, recommended to use `ExposureSeconds` instead, `Int`
+            ExposureMicros = 0,
+            /// Gain, read/write, `Int`
+            Gain,
+            /// Hardware bin, read/write, `Bool`
+            HardwareBin,
+            /// Camera temperature (Celcius), read-only, `Float`
+            Temperature,
+            /// Red channel white balance, `-1200..=1200`, read/write, `Int`
+            WhiteBalanceR,
+            /// Green channel white balance, `-1200..=1200`, read/write, `Int`
+            WhiteBalanceG,
+            /// Blue channel white balance, `-1200..=1200`, read/write, `Int`
+            WhiteBalanceB,
+            /// Camera offset, read/write, `Int`
+            Offset,
+            /// Maximum gain when auto-adjust is enabled, read/write, `Int`
+            AutoExposureMaxGain,
+            /// Maximum exposure when auto-adjust is enabled (unit: millis), read/write, `Int`
+            AutoExposureMaxExposure,
+            /// Target brightness when auto-adjust is enabled, read/write, `Int`
+            AutoExposureBrightness,
+            /// ST4 guide north, generally, it's DEC+ on the mount, read/write, `Bool`
+            GuideNorth,
+            /// ST4 guide south, generally, it's DEC- on the mount, read/write, `Bool`
+            GuideSouth,
+            /// ST4 guide east, generally, it's RA+ on the mount, read/write, `Bool`
+            GuideEast,
+            /// ST4 guide west, generally, it's RA- on the mount, read/write, `Bool`
+            GuideWest,
+            /// e/ADU, This value will change with gain, read-only, `Float`
+            EGain,
+            /// Cooler power percentage, `0..=100`, (only cool camera), read-only, `Int`
+            CoolerPower,
+            /// Camera target temperature (in degrees Celcius), read/write, `Int`
+            TargetTemp,
+            /// Turn cooler (and fan) on or off, read/write, `Bool`
+            Cooler,
+            /// (Deprecated) State of the lens heater, read-only, `Bool`
+            #[deprecated]
+            Heater,
+            /// Lens heater power percentage, `0..=100`, read/write, `Int`
+            HeaterPower,
+            /// Radiator fan power percentage, `0..=100`, read/write, `Int`
+            FanPower,
+            /// No flip. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
+            FlipNone,
+            /// Flip the image horizontally. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
+            FlipHorizontal,
+            /// Flip the image vertically. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
+            FlipVertical,
+            /// Flip the image both vertically and horizontally. Note that the value argument passed to [`set_config`] is ignored. read/write, `Bool`
+            FlipBoth,
+            /// Frame rate limit, `0..=2000`, 0 means no limit, read/write, `Int`
+            FrameLimit,
+            /// High Quality Image, for those without DDR camera (guide camera), if set to `True`, this will reduce the waviness and stripe of the image,
+            /// but frame rate may go down. Note: this config has no effect on those cameras that have DDR. read/write, `Bool`
+            Hqi,
+            /// USB bandwidth limit, read/write, `Int`
+            UsbBandwidthLimit,
+            /// Take the sum of pixels after binning, `True` is sum and `False` is average, default is `False`, read/write, `Bool`
+            BinSum,
+            /// Only for color cameras, when set to `True`, pixel binning will use neighbor pixels and the image after
+            /// binning will lose the bayer pattern, read/write, `Bool`
+            MonoBin,
+            /// Exposure time in seconds, `0.00001..=7200.0`, read/write, `Float`
+            ExposureSeconds,
+        }
+
+    }
 }
+#[doc(inline)]
+pub use config_parameter::ConfigParameter;
 
 impl ConfigParameter {
-    /// The type of value associated with this variable
+    /// The type of value associated with this parameter
     pub const fn value_type(self) -> ConfigValueKind {
         #![allow(deprecated)]
         use ConfigParameter::*;
@@ -482,7 +492,7 @@ impl ConfigParameter {
             Temperature | EGain | ExposureSeconds => ConfigValueKind::Float,
         }
     }
-    /// Whether this variable is writable (when the config supports writing)
+    /// Whether this parameter is normally writable
     pub const fn writable(self) -> bool {
         #![allow(deprecated)]
         use ConfigParameter::*;
@@ -531,7 +541,7 @@ impl<Res> Clone for SendButNotSync<Res> {
 impl<Res> Copy for SendButNotSync<Res> {}
 
 /// An opaque identifier for some resource denoted by the marker type `Res`.
-/// These resources are safe to send across threads, but need manual synchronization.
+/// These resources are generally safe to send across threads, but need manual synchronization.
 #[derive(Debug, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Id<Res>(c_int, SendButNotSync<Res>);
@@ -551,7 +561,7 @@ impl<Res> Id<Res> {
     }
 }
 
-/// A marker struct indicating that an [`Id`] represents logical ownership of a camera
+/// A marker struct indicating that an [`Id`] represents a camera
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Camera {}
 /// A marker struct indicating that an [`Id`] represents a binning mode
@@ -1149,7 +1159,7 @@ unsafe extern "C" {
     /// The documentation says that if this is called during an exposure, the exposure will be interrupted, terminating the capture if in
     /// single shot mode. However, it also says that it returns [`PoaResult::Exposing`] if called during an exposure.
     ///
-    /// I wouldn't risk calling this during an exposure to find out which of those behaviors are accurate if any.
+    /// I wouldn't risk calling this during an exposure to find out which of those behaviors are accurate, if any.
     /// </div>
     ///
     /// # Safety
