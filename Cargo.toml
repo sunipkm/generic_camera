@@ -3,7 +3,7 @@ resolver = "3"
 members = [
   # "gencam_asi_example",
   "generic_camera",
-  "generic_camera_asi",
+  # "generic_camera_asi",
   "generic_camera_player_one",
   "player_one_camera_sys",
   "zwo_asi_sys"
