@@ -7,7 +7,7 @@ use std::{
 };
 
 use generic_camera::{
-    GenCamCtrl, GenCamRoi, Property, PropertyValue,
+    GenCamCtrl, GenCamPixelBpp, GenCamRoi, Property, PropertyValue,
     controls::{CustomName, DeviceCtrl, SensorCtrl},
     property::PropertyLims,
 };
@@ -250,7 +250,7 @@ impl HandleInner {
                             .map_err(|_| PropertyError::Failed)
                     }?;
                     map_pixel_format(MaybeInvalidImageFormat(fmt))
-                        .unwrap_or_else(|| "UNKNOWN".to_owned())
+                        .unwrap_or(GenCamPixelBpp::Bpp8)
                         .into()
                 }
 
@@ -337,14 +337,30 @@ impl HandleInner {
                     .map_err(|_| PropertyError::Failed)?;
             }
             GenCamCtrl::Sensor(SensorCtrl::PixelFormat) => {
-                let string = value.as_enum_str().ok_or(PropertyError::WrongType)?;
-                let fmt = match string {
-                    "mono" | "MONO" => ImageFormat::Mono8,
-                    "raw8" | "RAW8" => ImageFormat::Raw8,
-                    "raw16" | "RAW16" => ImageFormat::Raw16,
-                    "rgb24" | "RGB24" => ImageFormat::Rgb24,
-                    _ => return Err(PropertyError::ValueOutOfRange),
+                let fmt = if let Some(string) = value.as_enum_str() {
+                    match string {
+                        "mono" | "MONO" => ImageFormat::Mono8,
+                        "raw8" | "RAW8" => ImageFormat::Raw8,
+                        "raw16" | "RAW16" => ImageFormat::Raw16,
+                        "rgb24" | "RGB24" => ImageFormat::Rgb24,
+                        _ => return Err(PropertyError::ValueOutOfRange),
+                    }
+                } else if let Some(pixel) = value.as_pixel_fmt() {
+                    match pixel {
+                        GenCamPixelBpp::Bpp8 if self.properties.is_color_camera.into_bool() => {
+                            ImageFormat::Mono8
+                        }
+                        GenCamPixelBpp::Bpp8 => ImageFormat::Raw8,
+                        GenCamPixelBpp::Bpp16 => ImageFormat::Raw16,
+                        GenCamPixelBpp::Bpp24 if self.properties.is_color_camera.into_bool() => {
+                            ImageFormat::Rgb24
+                        }
+                        _ => return Err(PropertyError::ValueOutOfRange),
+                    }
+                } else {
+                    return Err(PropertyError::WrongType);
                 };
+
                 if !self
                     .properties
                     .formats
@@ -499,8 +515,10 @@ impl HandleInner {
             _ => None,
         };
         let colorspace = match image_fmt {
-            ImageFormat::Mono8 | ImageFormat::Raw8 | ImageFormat::Raw16 => ColorSpace::Gray,
-            ImageFormat::Rgb24 => match bayer {
+            ImageFormat::Raw8 | ImageFormat::Raw16 => ColorSpace::Gray,
+            // I believe mono8 needs debayering according to the docs, but
+            // the docs are weird
+            ImageFormat::Mono8 | ImageFormat::Rgb24 => match bayer {
                 Some(bayer) => ColorSpace::Bayer(bayer),
                 None => ColorSpace::Rgb,
             },
@@ -657,7 +675,7 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
         (
             SensorCtrl::PixelFormat,
             Property::new(
-                PropertyLims::EnumStr {
+                PropertyLims::PixelFmt {
                     variants: img_formats
                         .iter()
                         .copied()
@@ -667,7 +685,7 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
                         .first()
                         .copied()
                         .and_then(map_pixel_format)
-                        .unwrap_or("RAW8".to_owned()),
+                        .unwrap_or(GenCamPixelBpp::Bpp8),
                 },
                 false,
                 false,
@@ -711,13 +729,12 @@ fn camera_properties_to_gencam(props: &CameraProperties) -> HashMap<GenCamCtrl, 
 
     HashMap::from_iter(props_iter)
 }
-fn map_pixel_format(fmt: MaybeInvalidImageFormat) -> Option<String> {
+fn map_pixel_format(fmt: MaybeInvalidImageFormat) -> Option<GenCamPixelBpp> {
     Some(
         match fmt.0.get().ok()? {
-            ImageFormat::Mono8 => "MONO",
-            ImageFormat::Raw8 => "RAW8",
-            ImageFormat::Raw16 => "RAW16",
-            ImageFormat::Rgb24 => "RGB24",
+            ImageFormat::Mono8 | ImageFormat::Raw8 => GenCamPixelBpp::Bpp8,
+            ImageFormat::Raw16 => GenCamPixelBpp::Bpp16,
+            ImageFormat::Rgb24 => GenCamPixelBpp::Bpp24,
         }
         .to_owned(),
     )
