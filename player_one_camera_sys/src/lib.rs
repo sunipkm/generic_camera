@@ -1166,6 +1166,8 @@ unsafe extern "C" {
     /// - You must not call this function from multiple threads concurrently with any read or write of data relating to this camera
     /// - The camera must be initialized if it is open
     /// - The camera should not be exposing or else some janky behavior might happen.
+    #[link_name = "POASetUserCustomID"]
+    #[doc(alias = "POASetUserCustomID")]
     pub unsafe fn set_user_custom_id(
         id: Id<Camera>,
         string: Option<&BoundedCString<16>>,
