@@ -60,10 +60,6 @@ impl OwnedCamera {
             // If we are exposing, we don't have to do anything
             CameraState::Exposing => {}
         }
-        unsafe {
-            poa::open_camera(id).into_result()?;
-            poa::init_camera(id).into_result()?;
-        };
         Ok(Self { id })
     }
     fn get_config_attrs(
