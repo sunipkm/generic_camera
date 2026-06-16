@@ -268,6 +268,7 @@ macro_rules! define_marshalling {
             $poa_param:ident <=> $gencam_ctrl_kind:ident($gencam_ctrl:expr) with $marshalling:ident
         ),*
     ) => {
+        #[allow(unreachable_patterns, reason = "The first one is the primary. We want to allow aliases on both sides.")]
         pub const fn poa2gencam_ctrl(poa: ConfigParameter) -> Option<(GenCamCtrl, PropMarshalling)> {
             Some(match poa {
                 $(
@@ -277,9 +278,13 @@ macro_rules! define_marshalling {
             })
         }
         pub fn gencam2poa_param(gencam: GenCamCtrl) -> Option<(ConfigParameter, PropMarshalling)> {
+
             Some(match gencam {
                 $(
-                   GenCamCtrl::$gencam_ctrl_kind(e) if  const { $gencam_ctrl } == e => (ConfigParameter::$poa_param, PropMarshalling::$marshalling),)*
+                   // Unfortunately, we can't do better than this because we can't have nice literals for custom names.
+                   // Pray that LLVM doesn't emit total trash, but it probably will.
+                   GenCamCtrl::$gencam_ctrl_kind(e) if const { $gencam_ctrl } == e => (ConfigParameter::$poa_param, PropMarshalling::$marshalling),
+                )*
                 _ => return None
             })
         }
@@ -288,8 +293,8 @@ macro_rules! define_marshalling {
 
 use generic_camera::controls::*;
 define_marshalling! {
-    ExposureMicros <=> Exposure(ExposureCtrl::ExposureTime) with IntMicros,
     ExposureSeconds <=> Exposure(ExposureCtrl::ExposureTime) with FloatSeconds,
+    ExposureMicros <=> Exposure(ExposureCtrl::ExposureTime) with IntMicros,
     AutoExposureMaxExposure <=> Exposure(ExposureCtrl::AutoMaxExposure) with IntMillis,
     AutoExposureBrightness <=> Exposure(ExposureCtrl::AutoTargetBrightness) with Int2Float,
     AutoExposureMaxGain <=> Exposure(ExposureCtrl::AutoMaxGain) with Int2Float,
@@ -304,6 +309,10 @@ define_marshalling! {
     CoolerPower <=> Device(DeviceCtrl::CoolerPower) with Int2Float,
     HeaterPower <=> Device(DeviceCtrl::Custom(CustomName::new("Heater Power").unwrap())) with Int2Float,
     FanPower <=> Device(DeviceCtrl::Custom(CustomName::new("Fan Power").unwrap())) with Int2Float,
+
+    // At first, I didn't realize CoolerTemp was meant to be the target temperature, so that's
+    // why we have duplicate aliases
+    TargetTemp <=> Device(DeviceCtrl::CoolerTemp) with Int2Float,
     TargetTemp <=> Device(DeviceCtrl::Custom(CustomName::new("Target Temp").unwrap())) with Int2Float,
 
     Gain <=> Analog(AnalogCtrl::Gain) with Int2Float,
